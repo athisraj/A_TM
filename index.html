@@ -64,7 +64,12 @@
     .rule-name { font-weight: 600; font-size: 11px; }
     .rule-status { font-size: 10px; font-weight: 600; text-transform: uppercase; color: var(--muted); }
     .rule-desc { color: var(--muted); font-size: 10px; line-height: 1.4; }
-    .rule-hits { margin-top: 4px; font-size: 10px; color: var(--orange); }
+    .rule-hits { font-size: 10px; color: var(--orange); }
+    .rule-weight-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 6px; }
+    .rule-weight-row label { font-size: 9px; text-transform: uppercase; letter-spacing: .4px; color: var(--muted); }
+    .rule-weight-row input { width: 48px; font-size: 11px; padding: 2px 5px; text-align: center; cursor: text; }
+    .rule-meta-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
+    .rule-precision { font-size: 10px; }
     .toggle { width: 28px; height: 16px; background: var(--border); border-radius: 8px; position: relative; transition: background .15s; flex-shrink: 0; display: inline-block; }
     .toggle::after { content:''; position:absolute; top:2px; left:2px; width:12px; height:12px; border-radius:50%; background:var(--muted); transition: transform .15s, background .15s; }
     .rule-card.active .toggle { background: var(--green); }
@@ -109,8 +114,11 @@
 
     /* Alerts Panel */
     .alerts-panel { background: var(--surface); border-left: 1px solid var(--border); overflow-y: auto; display: flex; flex-direction: column; }
-    .panel-header { position: sticky; top: 0; background: var(--surface); padding: 9px 14px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; z-index: 10; }
+    .panel-header { position: sticky; top: 0; background: var(--surface); padding: 9px 14px; border-bottom: 1px solid var(--border); z-index: 10; }
+    .panel-header-top { display: flex; align-items: center; justify-content: space-between; }
     .panel-header h2 { font-size: 13px; font-weight: 600; }
+    .queue-analytics { display: flex; flex-wrap: wrap; gap: 5px 8px; font-size: 10px; color: var(--muted); margin-top: 6px; }
+    .queue-analytics b { color: var(--text); }
     .alert-count { background: var(--red); color: #fff; font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 10px; animation: pulse 1.5s infinite; }
     .alert-count.zero { background: var(--border); animation: none; color: var(--muted); }
     .alert-list { flex: 1; padding: 8px; display: flex; flex-direction: column; gap: 10px; }
@@ -139,6 +147,10 @@
     .audit-time { font-family: monospace; color: var(--muted); margin-right: 4px; }
     .case-status-row { display: flex; align-items: center; gap: 6px; font-size: 10px; color: var(--muted); }
     .case-status-row select { flex: 1; font-size: 10px; padding: 3px 6px; }
+    .case-sla-label { font-size: 9px; text-transform: uppercase; letter-spacing: .4px; color: var(--muted); margin-bottom: 3px; }
+    .case-sla-track { height: 4px; background: var(--border); border-radius: 2px; overflow: hidden; }
+    .case-sla-fill { height: 100%; width: 100%; background: var(--green); transition: width 1s linear; }
+    .case-sla-text { font-size: 10px; color: var(--muted); margin-top: 3px; }
     .disposition-reason-box { display: flex; flex-direction: column; gap: 6px; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 8px; margin: 0 12px 10px; }
     .disposition-reason-box textarea { width: 100%; min-height: 50px; background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-family: inherit; font-size: 11px; padding: 6px; resize: vertical; }
     .disposition-reason-box .reason-buttons { display: flex; gap: 6px; }
@@ -213,6 +225,9 @@
     .pstat .pl { font-size: 9px; color: var(--muted); text-transform: uppercase; letter-spacing: .3px; margin-top: 2px; }
     .flag-item { display: flex; align-items: center; gap: 8px; padding: 6px 10px; background: var(--bg); border-radius: 6px; margin-bottom: 6px; font-size: 12px; }
     .txn-history-row { display: flex; justify-content: space-between; align-items: center; padding: 5px 8px; background: var(--bg); border-radius: 5px; margin-bottom: 4px; font-size: 11px; }
+    .link-row { display: flex; justify-content: space-between; align-items: center; padding: 6px 10px; background: var(--bg); border-radius: 5px; margin-bottom: 4px; font-size: 11px; }
+    .link-row.link-flagged { border: 1px solid rgba(248,81,73,.4); }
+    .link-detail { color: var(--muted); font-size: 10px; }
     .risk-rating { display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px; border-radius: 5px; font-size: 11px; font-weight: 700; }
     .risk-rating.low { background: rgba(63,185,80,.15); color: var(--green); }
     .risk-rating.medium { background: rgba(210,153,34,.15); color: var(--yellow); }
@@ -308,8 +323,11 @@
   <!-- Case Queue -->
   <div class="alerts-panel">
     <div class="panel-header">
-      <h2>Case Queue</h2>
-      <span class="alert-count zero" id="alertCount">0</span>
+      <div class="panel-header-top">
+        <h2>Case Queue</h2>
+        <span class="alert-count zero" id="alertCount">0</span>
+      </div>
+      <div class="queue-analytics" id="queueAnalytics">No cases closed yet this session</div>
     </div>
     <div class="alert-list" id="alertList">
       <div class="empty-state">
@@ -431,16 +449,21 @@ function screenCompliance(txn){
 }
 
 const RULES = [
-  { id:'ctr',       name:'Large Cash (CTR)',          desc:'Cash transaction ≥ $10,000', check:(t)=>t.type==='CASH'&&t.amount>=10000, severity:'red',    hits:0, active:true },
-  { id:'structuring',name:'Structuring / Smurfing',   desc:'Multiple cash deposits just below $10K within 24h', check:(t,h)=>{if(t.type!=='CASH'||t.amount<7000||t.amount>=10000)return false;return h.filter(x=>x.sender===t.sender&&x.type==='CASH'&&x.amount>=7000&&x.amount<10000&&(t.timestamp-x.timestamp)<86400000).length>=2;}, severity:'red', hits:0, active:true },
-  { id:'rapidfire', name:'Rapid Successive Txns',     desc:'3+ transactions from same account within 5 minutes', check:(t,h)=>h.filter(x=>x.sender===t.sender&&(t.timestamp-x.timestamp)<300000).length>=3, severity:'red', hits:0, active:true },
-  { id:'highrisk',  name:'High-Risk Jurisdiction',    desc:'Transaction involving FATF grey-list or sanctioned country', check:(t)=>HIGH_RISK_COUNTRIES.includes(t.country), severity:'red', hits:0, active:true },
-  { id:'roundamt',  name:'Round Dollar Amount',       desc:'Wire or ACH ≥ $5,000 with round amount', check:(t)=>['WIRE','ACH'].includes(t.type)&&t.amount>=5000&&t.amount%1000===0, severity:'yellow', hits:0, active:true },
-  { id:'largewire', name:'Large Wire Transfer',       desc:'Single wire transfer exceeding $50,000', check:(t)=>t.type==='WIRE'&&t.amount>=50000, severity:'yellow', hits:0, active:true },
-  { id:'crypto',    name:'Crypto Conversion',         desc:'Any crypto transaction (elevated ML risk)', check:(t)=>t.type==='CRYPTO', severity:'yellow', hits:0, active:true },
-  { id:'dormant',   name:'Dormant Account Activity',  desc:'Large transaction from dormant account', check:(t)=>t.isDormant&&t.amount>=5000, severity:'red', hits:0, active:true },
-  { id:'behavioral',name:'Behavioral Deviation',      desc:"Amount is 3+ std. deviations from this customer's own history (needs 5+ prior txns)", check:(t)=>t.behavior&&t.behavior.count>=5&&t.behavior.stddev>0&&t.behavior.z>=3, severity:'yellow', hits:0, active:true },
-  { id:'newcountry',name:'New Counterparty Country',  desc:'Customer transacting with a country never seen in their own history (needs 5+ prior txns)', check:(t)=>t.behavior&&t.behavior.count>=5&&!t.behavior.countries.has(t.country), severity:'yellow', hits:0, active:true }
+  { id:'ctr',       name:'Large Cash (CTR)',          desc:'Cash transaction ≥ $10,000', check:(t)=>t.type==='CASH'&&t.amount>=10000, severity:'red',    weight:40, hits:0, active:true },
+  { id:'structuring',name:'Structuring / Smurfing',   desc:'Multiple cash deposits just below $10K within 24h', check:(t,h)=>{if(t.type!=='CASH'||t.amount<7000||t.amount>=10000)return false;return h.filter(x=>x.sender===t.sender&&x.type==='CASH'&&x.amount>=7000&&x.amount<10000&&(t.timestamp-x.timestamp)<86400000).length>=2;}, severity:'red', weight:40, hits:0, active:true },
+  { id:'rapidfire', name:'Rapid Successive Txns',     desc:'3+ transactions from same account within 5 minutes', check:(t,h)=>h.filter(x=>x.sender===t.sender&&(t.timestamp-x.timestamp)<300000).length>=3, severity:'red', weight:40, hits:0, active:true },
+  { id:'highrisk',  name:'High-Risk Jurisdiction',    desc:'Transaction involving FATF grey-list or sanctioned country', check:(t)=>HIGH_RISK_COUNTRIES.includes(t.country), severity:'red', weight:40, hits:0, active:true },
+  { id:'roundamt',  name:'Round Dollar Amount',       desc:'Wire or ACH ≥ $5,000 with round amount', check:(t)=>['WIRE','ACH'].includes(t.type)&&t.amount>=5000&&t.amount%1000===0, severity:'yellow', weight:20, hits:0, active:true },
+  { id:'largewire', name:'Large Wire Transfer',       desc:'Single wire transfer exceeding $50,000', check:(t)=>t.type==='WIRE'&&t.amount>=50000, severity:'yellow', weight:20, hits:0, active:true },
+  { id:'crypto',    name:'Crypto Conversion',         desc:'Any crypto transaction (elevated ML risk)', check:(t)=>t.type==='CRYPTO', severity:'yellow', weight:20, hits:0, active:true },
+  { id:'dormant',   name:'Dormant Account Activity',  desc:'Large transaction from dormant account', check:(t)=>t.isDormant&&t.amount>=5000, severity:'red', weight:40, hits:0, active:true },
+  { id:'behavioral',name:'Behavioral Deviation',      desc:"Amount is 3+ std. deviations from this customer's own history (needs 5+ prior txns)", check:(t)=>t.behavior&&t.behavior.count>=5&&t.behavior.stddev>0&&t.behavior.z>=3, severity:'yellow', weight:20, hits:0, active:true },
+  { id:'newcountry',name:'New Counterparty Country',  desc:'Customer transacting with a country never seen in their own history (needs 5+ prior txns)', check:(t)=>t.behavior&&t.behavior.count>=5&&!t.behavior.countries.has(t.country), severity:'yellow', weight:20, hits:0, active:true },
+  { id:'fanin',     name:'Funnel Account (Fan-In)',   desc:'Receiver getting funds from 5+ distinct senders within 24h', check:(t,h)=>{const s=new Set(h.filter(x=>x.receiver===t.receiver&&(t.timestamp-x.timestamp)<86400000).map(x=>x.sender));s.add(t.sender);return s.size>=5;}, severity:'red', weight:40, hits:0, active:true },
+  { id:'fanout',    name:'Rapid Fan-Out (Layering)',  desc:'Sender distributing funds to 5+ distinct receivers within 1 hour', check:(t,h)=>{const r=new Set(h.filter(x=>x.sender===t.sender&&(t.timestamp-x.timestamp)<3600000).map(x=>x.receiver));r.add(t.receiver);return r.size>=5;}, severity:'red', weight:40, hits:0, active:true },
+  { id:'roundtrip', name:'Round-Trip Funds',          desc:'Funds returning toward their original sender within 48h', check:(t,h)=>h.some(x=>x.sender===t.receiver&&x.receiver===t.sender&&(t.timestamp-x.timestamp)<172800000), severity:'yellow', weight:20, hits:0, active:true },
+  { id:'velocity24h',name:'24h Cumulative Velocity',  desc:"Sender's total volume across 3+ txns in 24h exceeds $50,000", check:(t,h)=>{const recent=h.filter(x=>x.sender===t.sender&&(t.timestamp-x.timestamp)<86400000);return recent.length>=2&&(recent.reduce((a,x)=>a+x.amount,0)+t.amount)>=50000;}, severity:'yellow', weight:20, hits:0, active:true },
+  { id:'burstvolume',name:'1h Burst Volume',          desc:'Sender moves $75,000+ across 2+ txns within 1 hour', check:(t,h)=>{const recent=h.filter(x=>x.sender===t.sender&&(t.timestamp-x.timestamp)<3600000);return recent.length>=1&&(recent.reduce((a,x)=>a+x.amount,0)+t.amount)>=75000;}, severity:'red', weight:40, hits:0, active:true }
 ];
 
 const COUNTRIES = ['United States','United Kingdom','Canada','Germany','France','Singapore','Japan','Australia','Switzerland','Brazil','Iran','Russia','Venezuela','North Korea','Myanmar'];
@@ -521,6 +544,29 @@ function getCustomerBehavior(name, history) {
   return { count: past.length, mean, stddev: Math.sqrt(variance), countries: new Set(past.map(t=>t.country)) };
 }
 
+// Basic link analysis: who has this entity actually moved money with this
+// session, and is any of that counterparty itself a red flag (sanctioned,
+// high-risk, or flagged KYC)? Real network analysis works on a graph; this
+// is the flattened one-hop view of it.
+function getCounterpartyLinks(name, history) {
+  const links = new Map();
+  history.forEach(t => {
+    if (t.sender === name) {
+      const l = links.get(t.receiver) || { name: t.receiver, sentTo: 0, sentCount: 0, receivedFrom: 0, receivedCount: 0 };
+      l.sentTo += t.amount; l.sentCount++;
+      links.set(t.receiver, l);
+    }
+    if (t.receiver === name) {
+      const l = links.get(t.sender) || { name: t.sender, sentTo: 0, sentCount: 0, receivedFrom: 0, receivedCount: 0 };
+      l.receivedFrom += t.amount; l.receivedCount++;
+      links.set(t.sender, l);
+    }
+  });
+  return [...links.values()]
+    .map(l => ({ ...l, flagged: SANCTIONS_LIST.has(l.name) || PEP_NAMES.has(l.name) || findCustomer(l.name)?.riskRating==='high' }))
+    .sort((a,b) => (b.sentTo+b.receivedFrom) - (a.sentTo+a.receivedFrom));
+}
+
 function evaluateTxn(txn) {
   let risk = 0;
   txn.triggeredRules = [];
@@ -528,7 +574,7 @@ function evaluateTxn(txn) {
   if (txn.behavior) txn.behavior.z = txn.behavior.stddev > 0 ? (txn.amount - txn.behavior.mean) / txn.behavior.stddev : 0;
   for(const rule of RULES){
     if(!rule.active) continue;
-    if(rule.check(txn,transactions)){ txn.triggeredRules.push(rule.id); risk += rule.severity==='red'?40:20; rule.hits++; }
+    if(rule.check(txn,transactions)){ txn.triggeredRules.push(rule.id); risk += rule.weight; rule.hits++; }
   }
   if(HIGH_RISK_COUNTRIES.includes(txn.country)) risk+=15;
   if(txn.amount>50000) risk+=10;
@@ -615,13 +661,36 @@ function getDecision(txn) {
 //  UI — RULES
 // ─────────────────────────────────────────────
 
+function getRuleHitRate(rule){
+  const d = rule.dispositions; if(!d) return null;
+  const total = d.Cleared + d.Escalated + d['SAR Filed'];
+  if(total===0) return null;
+  return { pct: Math.round(((d.Escalated + d['SAR Filed'])/total)*100), total };
+}
+
 function renderRules(){
-  document.getElementById('rulesList').innerHTML = RULES.map(r=>`
+  document.getElementById('rulesList').innerHTML = RULES.map(r=>{
+    const hitRate = getRuleHitRate(r);
+    return `
     <div class="rule-card ${r.active?'active':''}" onclick="toggleRule('${r.id}')">
       <div class="rule-header"><div class="rule-name">${r.name}</div><div style="display:flex;align-items:center;gap:6px"><span class="rule-status">${r.active?'ON':'OFF'}</span><span class="toggle"></span></div></div>
       <div class="rule-desc">${r.desc}</div>
-      ${r.hits>0?`<div class="rule-hits">⚡ ${r.hits} hit${r.hits!==1?'s':''}</div>`:''}
-    </div>`).join('');
+      <div class="rule-weight-row" onclick="event.stopPropagation()">
+        <label>Risk weight</label>
+        <input type="number" min="0" max="100" step="5" value="${r.weight}" onclick="event.stopPropagation()" onchange="setRuleWeight('${r.id}', this.value)">
+      </div>
+      ${(r.hits>0||hitRate)?`<div class="rule-meta-row">
+        ${r.hits>0?`<span class="rule-hits">⚡ ${r.hits} hit${r.hits!==1?'s':''}</span>`:''}
+        ${hitRate?`<span class="rule-precision" style="color:${hitRate.pct<40?'var(--red)':hitRate.pct<70?'var(--yellow)':'var(--green)'}">🎯 ${hitRate.pct}% precision (${hitRate.total})</span>`:''}
+      </div>`:''}
+    </div>`;
+  }).join('');
+}
+
+function setRuleWeight(id, value){
+  const rule=RULES.find(r=>r.id===id); if(!rule) return;
+  rule.weight = Math.max(0, Math.min(100, parseInt(value)||0));
+  toast(`"${rule.name}" weight set to ${rule.weight}`, 'info');
 }
 
 function toggleRule(id){
@@ -666,6 +735,43 @@ function addTxnToFeed(txn){
 // an audit trail, and a written disposition reason when it's closed.
 
 const STATUS_LABELS = { open:'Open', in_review:'In Review', pending_info:'Pending Info', closed:'Closed' };
+
+// Real SAR filing has a 30-day regulatory deadline from detection. A live
+// session obviously can't run 30 days, so this compresses that clock down
+// to a few minutes purely so the "aging alert" pressure is demonstrable.
+const SAR_SLA_MS = 10*60*1000; // 10 simulated minutes stand in for the 30-day deadline
+
+function getSLAInfo(c){
+  const deadline = c.createdAt + SAR_SLA_MS;
+  const remaining = deadline - Date.now();
+  const pct = Math.max(0, Math.min(100, (remaining/SAR_SLA_MS)*100));
+  return { remaining, pct, breached: remaining<=0 };
+}
+
+function renderSLA(c){
+  const fill = document.getElementById(`slaFill-${c.id}`);
+  const text = document.getElementById(`slaText-${c.id}`);
+  if(!fill || !text) return;
+  const { remaining, pct, breached } = getSLAInfo(c);
+  fill.style.width = `${pct}%`;
+  fill.style.background = breached ? 'var(--red)' : pct<30 ? 'var(--yellow)' : 'var(--green)';
+  text.textContent = breached ? '⚠ SLA breached — file without delay' : `${formatDuration(remaining)} to SAR deadline`;
+  text.style.color = breached ? 'var(--red)' : 'var(--muted)';
+}
+
+function tickSLAs(){
+  cases.filter(c=>c.status!=='closed').forEach(renderSLA);
+}
+setInterval(tickSLAs, 1000);
+
+function formatDuration(ms){
+  const s = Math.max(0, Math.round(ms/1000));
+  if(s<60) return `${s}s`;
+  const m = Math.floor(s/60), rs = s%60;
+  if(m<60) return `${m}m ${rs}s`;
+  const h = Math.floor(m/60), rm = m%60;
+  return `${h}h ${rm}m`;
+}
 
 function getOrCreateCase(txn){
   let c = cases.find(c => c.customerName===txn.sender && c.status!=='closed');
@@ -749,6 +855,11 @@ function buildCaseCardHTML(c){
         <option value="in_review" ${c.status==='in_review'?'selected':''}>In Review</option>
         <option value="pending_info" ${c.status==='pending_info'?'selected':''}>Pending Info</option>
       </select>
+    </div>
+    <div class="case-sla">
+      <div class="case-sla-label">SAR filing SLA <span title="Compressed for demo: 10 simulated minutes stand in for the real 30-day regulatory deadline">(compressed clock)</span></div>
+      <div class="case-sla-track"><div class="case-sla-fill" id="slaFill-${c.id}"></div></div>
+      <div class="case-sla-text" id="slaText-${c.id}"></div>
     </div>` : '';
 
   const complianceHitsAll = linkedTxns.flatMap(t=>t.complianceHits||[]);
@@ -804,6 +915,7 @@ function upsertCaseCard(c){
   list.insertBefore(el, list.firstChild);
   while(list.children.length>60) list.removeChild(list.lastChild);
   updateCaseQueueCount();
+  renderSLA(c);
 }
 
 function setCaseStatus(caseId, newStatus){
@@ -843,6 +955,17 @@ function confirmDisposition(caseId){
   delete pendingDisposition[caseId];
   if(action==='Cleared') stats.cleared++;
   if(action==='SAR Filed') stats.sarCount++;
+
+  // Attribute this outcome back to every rule that fired on the case, so
+  // a rule's hit-rate reflects how often it actually led somewhere versus
+  // just generating noise that got cleared.
+  const linkedTxns = c.alertIds.map(id=>txnById.get(id)).filter(Boolean);
+  const involvedRuleIds = new Set(linkedTxns.flatMap(t=>t.triggeredRules));
+  involvedRuleIds.forEach(id=>{
+    const rule = RULES.find(r=>r.id===id); if(!rule) return;
+    rule.dispositions = rule.dispositions || { Cleared:0, Escalated:0, 'SAR Filed':0 };
+    rule.dispositions[action]++;
+  });
   const msgs={Cleared:['Case cleared — no further action required','success'],Escalated:['Case escalated to senior analyst','warning'],'SAR Filed':['SAR filed with FinCEN','error']};
   toast(...msgs[action]);
   upsertCaseCard(c);
@@ -854,7 +977,37 @@ function updateCaseQueueCount(){
   const el = document.getElementById('alertCount');
   el.textContent=n; el.className=`alert-count ${n===0?'zero':''}`;
   document.getElementById('statReview').textContent=n;
+  renderQueueAnalytics();
 }
+
+// ─────────────────────────────────────────────
+//  QA / ALERT LIFECYCLE METRICS
+// ─────────────────────────────────────────────
+
+function computeQAMetrics(){
+  const closed = cases.filter(c=>c.disposition);
+  const openCases = cases.filter(c=>c.status!=='closed');
+  return {
+    closedCount: closed.length,
+    avgTimeToClose: closed.length ? closed.reduce((a,c)=>a+(c.disposition.at-c.createdAt),0)/closed.length : null,
+    clearRate: closed.length ? (closed.filter(c=>c.disposition.action==='Cleared').length/closed.length)*100 : null,
+    oldestOpenAge: openCases.length ? Math.max(...openCases.map(c=>Date.now()-c.createdAt)) : null
+  };
+}
+
+function renderQueueAnalytics(){
+  const el = document.getElementById('queueAnalytics'); if(!el) return;
+  const m = computeQAMetrics();
+  if(m.closedCount===0){ el.textContent = 'No cases closed yet this session'; return; }
+  el.innerHTML = `
+    <span>Avg time-to-close: <b>${formatDuration(m.avgTimeToClose)}</b></span>
+    <span>·</span>
+    <span>Clear rate: <b style="color:${m.clearRate>=70?'var(--yellow)':'inherit'}">${m.clearRate.toFixed(0)}%</b>${m.clearRate>=70?' <span style="color:var(--yellow)">⚠ high — review rule calibration</span>':''}</span>
+    ${m.oldestOpenAge!=null?`<span>· Oldest open case: <b>${formatDuration(m.oldestOpenAge)}</b></span>`:''}
+  `;
+}
+
+setInterval(renderQueueAnalytics, 5000);
 
 // ─────────────────────────────────────────────
 //  STATS
@@ -988,6 +1141,7 @@ function openProfileModal(customerId){
   document.getElementById('profileModalTitle').textContent=`Customer Profile — ${cp.name}`;
   const recentTxns=transactions.filter(t=>t.sender===cp.name||t.receiver===cp.name).slice(-8).reverse();
   const behavior=getCustomerBehavior(cp.name, transactions);
+  const links=getCounterpartyLinks(cp.name, transactions);
   document.getElementById('profileModalBody').innerHTML=`
     <div class="profile-card" style="margin-bottom:14px">
       <div class="profile-header">
@@ -1021,6 +1175,13 @@ function openProfileModal(customerId){
         <div class="pstat" style="background:var(--surface2);padding:10px;border-radius:6px;text-align:left"><div class="pl" style="margin-bottom:4px">Countries Seen</div><div style="font-size:14px;font-weight:700">${[...behavior.countries].join(', ')}</div></div>
       </div>
       <div style="font-size:11px;color:var(--muted);margin-top:6px">${behavior.count>=5?'Baseline established — new transactions are scored against this history for anomaly detection.':`Baseline still building — needs ${5-behavior.count} more transaction${5-behavior.count!==1?'s':''} before anomaly detection activates.`}</div>
+    </div>`:''}
+    ${links.length>0?`<div class="modal-section"><h4>Network — Linked Counterparties (this session)</h4>${links.slice(0,6).map(l=>`
+      <div class="link-row ${l.flagged?'link-flagged':''}">
+        <span>${l.flagged?'🚩 ':''}${l.name}</span>
+        <span class="link-detail">${l.sentCount>0?`sent $${l.sentTo.toLocaleString()} (${l.sentCount})`:''}${l.sentCount>0&&l.receivedCount>0?' · ':''}${l.receivedCount>0?`received $${l.receivedFrom.toLocaleString()} (${l.receivedCount})`:''}</span>
+      </div>`).join('')}
+      ${links.some(l=>l.flagged)?'<div style="font-size:10px;color:var(--red);margin-top:6px">🚩 Flagged counterparties are themselves sanctioned, a PEP, or a HIGH-risk customer</div>':''}
     </div>`:''}
     ${recentTxns.length>0?`<div class="modal-section"><h4>Recent Transactions (this session)</h4>${recentTxns.map(t=>`<div class="txn-history-row"><span>${t.id}</span><span class="type-badge ${TYPE_CLASSES[t.type]}">${t.type}</span><span>$${t.amount.toLocaleString()}</span><span class="${t.status==='flagged'?'s-alert':t.status==='review'?'s-review':'s-clear'} status-badge">${t.status.toUpperCase()}</span></div>`).join('')}</div>`:''}
     <div class="modal-section"><h4>Decision Guide for this Customer</h4>
