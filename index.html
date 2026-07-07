@@ -1,0 +1,822 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TXN Monitor — Transaction Monitoring Simulation</title>
+  <style>
+    :root {
+      --bg: #0d1117;
+      --surface: #161b22;
+      --surface2: #1c2128;
+      --border: #30363d;
+      --text: #e6edf3;
+      --muted: #8b949e;
+      --green: #3fb950;
+      --yellow: #d29922;
+      --red: #f85149;
+      --blue: #58a6ff;
+      --purple: #bc8cff;
+      --orange: #ffa657;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', system-ui, sans-serif; font-size: 13px; min-height: 100vh; }
+
+    /* Header */
+    header { background: var(--surface); border-bottom: 1px solid var(--border); padding: 12px 20px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 100; }
+    .logo { display: flex; align-items: center; gap: 10px; font-size: 16px; font-weight: 700; }
+    .logo-icon { width: 30px; height: 30px; background: linear-gradient(135deg, #58a6ff, #bc8cff); border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 15px; }
+    .header-controls { display: flex; align-items: center; gap: 10px; }
+    .speed-label { color: var(--muted); font-size: 12px; }
+    select, button { background: var(--surface2); border: 1px solid var(--border); color: var(--text); border-radius: 6px; padding: 5px 10px; font-size: 12px; cursor: pointer; }
+    button:hover { border-color: var(--blue); }
+    .btn-primary { background: var(--blue); border-color: var(--blue); color: #000; font-weight: 600; }
+    .btn-primary:hover { background: #79c0ff; }
+    .btn-danger { background: transparent; border-color: var(--red); color: var(--red); }
+    .status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); box-shadow: 0 0 6px var(--green); animation: pulse 2s infinite; }
+    .status-dot.paused { background: var(--yellow); box-shadow: 0 0 6px var(--yellow); animation: none; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+
+    /* Layout */
+    .layout { display: grid; grid-template-columns: 220px 1fr 360px; grid-template-rows: auto 1fr; height: calc(100vh - 53px); overflow: hidden; }
+
+    /* Stat Bar */
+    .stat-bar { grid-column: 1/-1; display: flex; gap: 1px; background: var(--border); border-bottom: 1px solid var(--border); }
+    .stat-card { flex: 1; background: var(--surface); padding: 10px 14px; display: flex; align-items: center; gap: 10px; }
+    .stat-icon { width: 34px; height: 34px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 16px; flex-shrink: 0; }
+    .stat-card .label { color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: .5px; }
+    .stat-card .value { font-size: 20px; font-weight: 700; line-height: 1.1; }
+    .stat-card .delta { font-size: 11px; color: var(--muted); }
+
+    /* Sidebar */
+    .sidebar { background: var(--surface); border-right: 1px solid var(--border); overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 10px; }
+    .sidebar h3 { font-size: 10px; text-transform: uppercase; letter-spacing: .8px; color: var(--muted); }
+    .rule-card { background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 9px 11px; cursor: pointer; transition: border-color .15s; }
+    .rule-card:hover { border-color: var(--blue); }
+    .rule-card.active { border-color: var(--green); }
+    .rule-card.active .rule-status { color: var(--green); }
+    .rule-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 3px; }
+    .rule-name { font-weight: 600; font-size: 11px; }
+    .rule-status { font-size: 10px; font-weight: 600; text-transform: uppercase; color: var(--muted); }
+    .rule-desc { color: var(--muted); font-size: 10px; line-height: 1.4; }
+    .rule-hits { margin-top: 4px; font-size: 10px; color: var(--orange); }
+    .toggle { width: 28px; height: 16px; background: var(--border); border-radius: 8px; position: relative; transition: background .15s; flex-shrink: 0; display: inline-block; }
+    .toggle::after { content:''; position:absolute; top:2px; left:2px; width:12px; height:12px; border-radius:50%; background:var(--muted); transition: transform .15s, background .15s; }
+    .rule-card.active .toggle { background: var(--green); }
+    .rule-card.active .toggle::after { transform: translateX(12px); background: #fff; }
+
+    /* Feed */
+    .feed { background: var(--bg); overflow-y: auto; display: flex; flex-direction: column; }
+    .feed-header { position: sticky; top: 0; background: var(--bg); padding: 9px 14px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; z-index: 10; }
+    .feed-header h2 { font-size: 13px; font-weight: 600; }
+    .feed-cols { display: grid; grid-template-columns: 95px 1fr 1fr 85px 75px 75px; gap: 8px; padding: 5px 14px; background: var(--surface); border-bottom: 1px solid var(--border); color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: .5px; position: sticky; top: 40px; z-index: 9; }
+    .txn-row { display: grid; grid-template-columns: 95px 1fr 1fr 85px 75px 75px; align-items: center; gap: 8px; padding: 8px 14px; border-bottom: 1px solid rgba(48,54,61,.5); cursor: pointer; transition: background .1s; animation: slideIn .25s ease; }
+    @keyframes slideIn { from{opacity:0;transform:translateX(-10px)} to{opacity:1;transform:translateX(0)} }
+    .txn-row:hover { background: var(--surface); }
+    .txn-row.flagged { border-left: 3px solid var(--red); }
+    .txn-row.review { border-left: 3px solid var(--yellow); }
+    .txn-row.clean { border-left: 3px solid transparent; }
+    .txn-id { font-family: monospace; font-size: 11px; color: var(--muted); }
+    .txn-parties { font-size: 12px; }
+    .txn-parties .from { color: var(--muted); font-size: 11px; }
+    .type-badge { padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: 600; text-transform: uppercase; }
+    .type-wire { background: rgba(88,166,255,.15); color: var(--blue); }
+    .type-cash { background: rgba(63,185,80,.15); color: var(--green); }
+    .type-ach { background: rgba(188,140,255,.15); color: var(--purple); }
+    .type-card { background: rgba(255,166,87,.15); color: var(--orange); }
+    .type-crypto { background: rgba(248,81,73,.15); color: var(--red); }
+    .txn-amount { font-weight: 600; text-align: right; }
+    .txn-amount.large { color: var(--orange); }
+    .risk-bar { display: flex; align-items: center; gap: 5px; }
+    .risk-track { flex: 1; height: 4px; background: var(--border); border-radius: 2px; overflow: hidden; }
+    .risk-fill { height: 100%; border-radius: 2px; }
+    .risk-low .risk-fill { background: var(--green); }
+    .risk-med .risk-fill { background: var(--yellow); }
+    .risk-high .risk-fill { background: var(--red); }
+    .risk-score { font-size: 10px; font-weight: 600; width: 22px; text-align: right; }
+    .risk-low .risk-score { color: var(--green); }
+    .risk-med .risk-score { color: var(--yellow); }
+    .risk-high .risk-score { color: var(--red); }
+    .status-badge { font-size: 10px; font-weight: 600; text-transform: uppercase; padding: 2px 6px; border-radius: 4px; text-align: center; }
+    .s-alert { background: rgba(248,81,73,.15); color: var(--red); }
+    .s-review { background: rgba(210,153,34,.15); color: var(--yellow); }
+    .s-clear { background: rgba(63,185,80,.1); color: var(--green); }
+
+    /* Alerts Panel */
+    .alerts-panel { background: var(--surface); border-left: 1px solid var(--border); overflow-y: auto; display: flex; flex-direction: column; }
+    .panel-header { position: sticky; top: 0; background: var(--surface); padding: 9px 14px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; z-index: 10; }
+    .panel-header h2 { font-size: 13px; font-weight: 600; }
+    .alert-count { background: var(--red); color: #fff; font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 10px; animation: pulse 1.5s infinite; }
+    .alert-count.zero { background: var(--border); animation: none; color: var(--muted); }
+    .alert-list { flex: 1; padding: 8px; display: flex; flex-direction: column; gap: 10px; }
+    .empty-state { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; color: var(--muted); gap: 8px; padding: 40px; text-align: center; }
+    .empty-icon { font-size: 32px; }
+
+    /* Alert Card */
+    .alert-card { background: var(--surface2); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; animation: slideIn .3s ease; }
+    .alert-card.alert-red { border-left: 3px solid var(--red); }
+    .alert-card.alert-yellow { border-left: 3px solid var(--yellow); }
+    .alert-top { padding: 10px 12px 0; display: flex; justify-content: space-between; align-items: flex-start; }
+    .alert-id { font-family: monospace; font-size: 11px; color: var(--muted); }
+    .alert-time { font-size: 10px; color: var(--muted); }
+    .alert-rule { padding: 4px 12px 0; font-size: 11px; font-weight: 600; color: var(--red); }
+    .alert-yellow .alert-rule { color: var(--yellow); }
+    .alert-txn-detail { padding: 4px 12px 8px; font-size: 11px; color: var(--muted); line-height: 1.5; }
+
+    /* Customer Profile Strip */
+    .customer-strip { margin: 0 10px 8px; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 9px 11px; }
+    .customer-strip-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 7px; }
+    .customer-name-row { display: flex; align-items: center; gap: 7px; }
+    .customer-avatar { width: 26px; height: 26px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; color: #fff; flex-shrink: 0; }
+    .customer-name { font-size: 12px; font-weight: 600; }
+    .customer-occupation { font-size: 10px; color: var(--muted); }
+    .kyc-badge { font-size: 10px; font-weight: 600; padding: 2px 7px; border-radius: 4px; text-transform: uppercase; white-space: nowrap; }
+    .kyc-verified { background: rgba(63,185,80,.15); color: var(--green); }
+    .kyc-pending { background: rgba(210,153,34,.15); color: var(--yellow); }
+    .kyc-flagged { background: rgba(248,81,73,.15); color: var(--red); }
+    .customer-stats { display: grid; grid-template-columns: repeat(4,1fr); gap: 6px; }
+    .cstat { text-align: center; }
+    .cstat .cv { font-size: 13px; font-weight: 700; }
+    .cstat .cl { font-size: 9px; color: var(--muted); text-transform: uppercase; letter-spacing: .3px; }
+
+    /* Decision Guidance */
+    .decision-guidance { margin: 0 10px 8px; border-radius: 8px; padding: 9px 11px; font-size: 11px; }
+    .decision-guidance.recommend-clear { background: rgba(63,185,80,.08); border: 1px solid rgba(63,185,80,.3); }
+    .decision-guidance.recommend-escalate { background: rgba(210,153,34,.08); border: 1px solid rgba(210,153,34,.3); }
+    .decision-guidance.recommend-sar { background: rgba(248,81,73,.08); border: 1px solid rgba(248,81,73,.3); }
+    .guidance-title { font-weight: 700; margin-bottom: 4px; display: flex; align-items: center; gap: 5px; }
+    .recommend-clear .guidance-title { color: var(--green); }
+    .recommend-escalate .guidance-title { color: var(--yellow); }
+    .recommend-sar .guidance-title { color: var(--red); }
+    .guidance-reasons { color: var(--muted); line-height: 1.6; }
+    .guidance-reasons li { margin-left: 14px; }
+
+    /* Alert Actions */
+    .alert-actions { display: flex; gap: 1px; background: var(--border); }
+    .alert-actions button { flex: 1; border: none; border-radius: 0; padding: 8px; font-size: 11px; font-weight: 600; background: var(--surface2); }
+    .alert-actions button:first-child { border-bottom-left-radius: 7px; }
+    .alert-actions button:last-child { border-bottom-right-radius: 7px; }
+    .btn-clear { color: var(--green); }
+    .btn-clear:hover { background: rgba(63,185,80,.1); border-color: transparent !important; }
+    .btn-escalate { color: var(--yellow); }
+    .btn-escalate:hover { background: rgba(210,153,34,.1); border-color: transparent !important; }
+    .btn-sar { color: var(--purple); }
+    .btn-sar:hover { background: rgba(188,140,255,.1); border-color: transparent !important; }
+
+    /* Modal */
+    .modal-backdrop { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.75); z-index: 200; align-items: center; justify-content: center; }
+    .modal-backdrop.open { display: flex; }
+    .modal { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; width: 560px; max-width: 96vw; max-height: 90vh; overflow-y: auto; padding: 20px; animation: fadeUp .2s ease; }
+    @keyframes fadeUp { from{opacity:0;transform:translateY(10px)} to{opacity:1;transform:translateY(0)} }
+    .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+    .modal-title { font-size: 15px; font-weight: 700; }
+    .modal-close { background: none; border: none; color: var(--muted); font-size: 18px; cursor: pointer; }
+    .modal-close:hover { color: var(--text); }
+    .modal-section { margin-bottom: 16px; }
+    .modal-section h4 { font-size: 10px; text-transform: uppercase; letter-spacing: .6px; color: var(--muted); margin-bottom: 8px; }
+    .modal-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .modal-field label { display: block; font-size: 10px; text-transform: uppercase; letter-spacing: .5px; color: var(--muted); margin-bottom: 3px; }
+    .modal-field .val { font-size: 13px; font-weight: 500; }
+    .divider { height: 1px; background: var(--border); margin: 14px 0; }
+    .profile-card { background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 14px; }
+    .profile-header { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+    .profile-avatar { width: 44px; height: 44px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 20px; font-weight: 700; color: #fff; }
+    .profile-name { font-size: 15px; font-weight: 700; }
+    .profile-sub { font-size: 11px; color: var(--muted); }
+    .profile-stats { display: grid; grid-template-columns: repeat(4,1fr); gap: 8px; margin-bottom: 12px; }
+    .pstat { background: var(--bg); border-radius: 6px; padding: 8px; text-align: center; }
+    .pstat .pv { font-size: 16px; font-weight: 700; }
+    .pstat .pl { font-size: 9px; color: var(--muted); text-transform: uppercase; letter-spacing: .3px; margin-top: 2px; }
+    .flag-item { display: flex; align-items: center; gap: 8px; padding: 6px 10px; background: var(--bg); border-radius: 6px; margin-bottom: 6px; font-size: 12px; }
+    .txn-history-row { display: flex; justify-content: space-between; align-items: center; padding: 5px 8px; background: var(--bg); border-radius: 5px; margin-bottom: 4px; font-size: 11px; }
+    .risk-rating { display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px; border-radius: 5px; font-size: 11px; font-weight: 700; }
+    .risk-rating.low { background: rgba(63,185,80,.15); color: var(--green); }
+    .risk-rating.medium { background: rgba(210,153,34,.15); color: var(--yellow); }
+    .risk-rating.high { background: rgba(248,81,73,.15); color: var(--red); }
+
+    /* Scrollbars */
+    ::-webkit-scrollbar { width: 5px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+    /* Toast */
+    .toast-container { position: fixed; bottom: 20px; right: 20px; z-index: 300; display: flex; flex-direction: column; gap: 8px; }
+    .toast { background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 10px 14px; font-size: 12px; animation: slideRight .25s ease; max-width: 280px; }
+    @keyframes slideRight { from{opacity:0;transform:translateX(20px)} to{opacity:1;transform:translateX(0)} }
+    .toast.success { border-left: 3px solid var(--green); }
+    .toast.warning { border-left: 3px solid var(--yellow); }
+    .toast.error { border-left: 3px solid var(--red); }
+    .toast.info { border-left: 3px solid var(--blue); }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <div class="logo-icon">🛡</div>
+    TXN Monitor <span style="color:var(--muted);font-weight:400;font-size:12px;margin-left:6px;">Simulation</span>
+  </div>
+  <div class="header-controls">
+    <div class="status-dot" id="statusDot"></div>
+    <span class="speed-label">Speed:</span>
+    <select id="speedSelect" onchange="updateSpeed()">
+      <option value="3000">Slow (1/3s)</option>
+      <option value="1500" selected>Normal (1/1.5s)</option>
+      <option value="700">Fast (1/0.7s)</option>
+      <option value="300">Stress</option>
+    </select>
+    <button onclick="injectSuspicious()" class="btn-danger">💉 Inject Suspicious</button>
+    <button id="toggleBtn" onclick="toggleFeed()" class="btn-primary">⏸ Pause</button>
+  </div>
+</header>
+
+<div class="layout">
+  <div class="stat-bar">
+    <div class="stat-card">
+      <div class="stat-icon" style="background:rgba(88,166,255,.1)">💸</div>
+      <div><div class="label">Total Transactions</div><div class="value" id="statTotal">0</div><div class="delta" id="statVolume">$0</div></div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-icon" style="background:rgba(248,81,73,.1)">🚨</div>
+      <div><div class="label">Alerts Generated</div><div class="value" style="color:var(--red)" id="statAlerts">0</div><div class="delta" id="statAlertRate">0% rate</div></div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-icon" style="background:rgba(210,153,34,.1)">⚠️</div>
+      <div><div class="label">Pending Review</div><div class="value" style="color:var(--yellow)" id="statReview">0</div><div class="delta">Awaiting analyst</div></div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-icon" style="background:rgba(63,185,80,.1)">✅</div>
+      <div><div class="label">Cleared</div><div class="value" style="color:var(--green)" id="statCleared">0</div><div class="delta" id="statSAR">0 SARs filed</div></div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-icon" style="background:rgba(188,140,255,.1)">📊</div>
+      <div><div class="label">Avg Risk Score</div><div class="value" style="color:var(--purple)" id="statAvgRisk">0</div><div class="delta">Out of 100</div></div>
+    </div>
+  </div>
+
+  <!-- Rules Sidebar -->
+  <div class="sidebar">
+    <div><h3>Monitoring Rules</h3><div style="color:var(--muted);font-size:11px;margin-top:3px;">Click to enable/disable</div></div>
+    <div id="rulesList"></div>
+  </div>
+
+  <!-- Feed -->
+  <div class="feed">
+    <div class="feed-header">
+      <h2>Live Transaction Feed</h2>
+      <span style="color:var(--muted);font-size:11px;" id="feedCount">0 transactions</span>
+    </div>
+    <div class="feed-cols">
+      <div>TXN ID</div><div>Counterparties</div><div>Type / Country</div>
+      <div style="text-align:right">Amount</div><div>Risk</div><div>Status</div>
+    </div>
+    <div id="feedList"></div>
+  </div>
+
+  <!-- Alerts Panel -->
+  <div class="alerts-panel">
+    <div class="panel-header">
+      <h2>Alert Queue</h2>
+      <span class="alert-count zero" id="alertCount">0</span>
+    </div>
+    <div class="alert-list" id="alertList">
+      <div class="empty-state">
+        <div class="empty-icon">🔍</div>
+        <div>No alerts yet</div>
+        <div style="font-size:11px">Flagged transactions will appear here</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Transaction Detail Modal -->
+<div class="modal-backdrop" id="modalBackdrop" onclick="closeModal(event)">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title" id="modalTitle">Transaction Detail</div>
+      <button class="modal-close" onclick="document.getElementById('modalBackdrop').classList.remove('open')">✕</button>
+    </div>
+    <div id="modalBody"></div>
+  </div>
+</div>
+
+<!-- Customer Profile Modal -->
+<div class="modal-backdrop" id="profileModalBackdrop" onclick="closeProfileModal(event)">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title" id="profileModalTitle">Customer Profile</div>
+      <button class="modal-close" onclick="document.getElementById('profileModalBackdrop').classList.remove('open')">✕</button>
+    </div>
+    <div id="profileModalBody"></div>
+  </div>
+</div>
+
+<div class="toast-container" id="toastContainer"></div>
+
+<script>
+// ─────────────────────────────────────────────
+//  CUSTOMER DATABASE
+// ─────────────────────────────────────────────
+
+const OCCUPATIONS = [
+  'Retail Business Owner','Freelance Consultant','Import/Export Trader',
+  'Real Estate Developer','Cryptocurrency Trader','Restaurant Owner',
+  'IT Contractor','Healthcare Worker','Retired','Legal Professional',
+  'Construction Contractor','Online Marketplace Seller','Money Services Business',
+  'Non-Profit Director','Foreign Government Official'
+];
+
+const RISK_PROFILES = {
+  low:    { label: 'Low',    color: '#3fb950', alertRate: 0.03 },
+  medium: { label: 'Medium', color: '#d29922', alertRate: 0.12 },
+  high:   { label: 'High',   color: '#f85149', alertRate: 0.35 }
+};
+
+function makeCustomer(id, name, occupation, riskRating, kycStatus, country, typicalMin, typicalMax, accountAgeDays, pastAlerts, pastSARs, notes) {
+  return { id, name, occupation, riskRating, kycStatus, country, typicalMin, typicalMax, accountAgeDays, pastAlerts, pastSARs, notes,
+    color: ['#58a6ff','#3fb950','#d29922','#f85149','#bc8cff','#ffa657'][id % 6],
+    initials: name.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase()
+  };
+}
+
+const CUSTOMERS = [
+  makeCustomer(0,  'Alice Chen',          'IT Contractor',               'low',    'verified', 'United States', 500,   8000,  1420, 0, 0, 'Long-standing client, consistent salary deposits, no concerns.'),
+  makeCustomer(1,  'Bob Martinez',        'Retail Business Owner',       'low',    'verified', 'United States', 1000,  15000, 980,  1, 0, 'Runs a hardware store. Occasional large cash deposits normal for business.'),
+  makeCustomer(2,  'Carol Singh',         'Healthcare Worker',           'low',    'verified', 'United Kingdom', 200,  5000,  730,  0, 0, 'Nurse. Regular payroll. No unusual activity.'),
+  makeCustomer(3,  'David Kim',           'Import/Export Trader',        'medium', 'verified', 'South Korea',   5000,  80000, 540,  3, 0, 'Active cross-border trade. Wire transfers expected but monitor frequency.'),
+  makeCustomer(4,  'Elena Novak',         'Freelance Consultant',        'low',    'verified', 'Germany',        300,  12000, 890,  0, 0, 'Regular project payments from EU clients. Consistent pattern.'),
+  makeCustomer(5,  'Frank Osei',          'Money Services Business',     'high',   'verified', 'Ghana',         1000,  50000, 210,  8, 1, 'Licensed MSB but high-volume cash. Prior SAR for structuring pattern.'),
+  makeCustomer(6,  'Grace Liu',           'Real Estate Developer',       'medium', 'verified', 'China',        10000, 500000, 670, 2, 0, 'Large project-based wire transfers. Verify source of funds on large txns.'),
+  makeCustomer(7,  'Henry Patel',         'Restaurant Owner',            'low',    'verified', 'United States', 500,  20000,  1100, 1, 0, 'Cash-intensive business. Large cash deposits expected, watch for structuring.'),
+  makeCustomer(8,  'Irene Walsh',         'Retired',                     'low',    'verified', 'United States', 100,  3000,  2100, 0, 0, 'Fixed income. Large or international transactions would be unusual.'),
+  makeCustomer(9,  'James Okonkwo',       'Non-Profit Director',         'medium', 'pending',  'Nigeria',       2000,  40000, 90,   0, 0, 'New account. Non-profit with international donor base. KYC still pending.'),
+  makeCustomer(10, 'Karen Yamamoto',      'Legal Professional',          'low',    'verified', 'Japan',          500,  25000, 1560, 0, 0, 'Attorney. Client escrow movements expected. Well-documented.'),
+  makeCustomer(11, 'Luis Reyes',          'Construction Contractor',     'medium', 'verified', 'Mexico',        2000,  30000, 430,  2, 0, 'Cross-border payments to subcontractors. Some cash. Monitor large wires.'),
+  makeCustomer(12, 'Maya Sharma',         'Online Marketplace Seller',   'low',    'verified', 'India',          200,  10000, 760,  0, 0, 'E-commerce income. Regular small ACH/card receipts. Low risk.'),
+  makeCustomer(13, 'Nathan Berg',         'Cryptocurrency Trader',       'high',   'verified', 'United States', 5000, 200000, 310, 5, 1, 'High-volume crypto. Prior SAR filed. Scrutinize all crypto transactions.'),
+  makeCustomer(14, 'Olivia Tremblay',     'Freelance Consultant',        'low',    'verified', 'Canada',         400,  9000,  920,  0, 0, 'Clean profile. Consistent monthly deposits. No concerns.'),
+  makeCustomer(15, 'Paul Andersen',       'Import/Export Trader',        'medium', 'verified', 'Denmark',       3000,  60000, 650,  1, 0, 'European trade, occasional large wires normal. Monitor jurisdictions.'),
+  makeCustomer(16, 'Quinn McCarthy',      'Foreign Government Official', 'high',   'flagged',  'Venezuela',     5000, 100000, 180, 6, 2, 'PEP (Politically Exposed Person). Two prior SARs. Enhanced due diligence required.'),
+  makeCustomer(17, 'Rosa Santos',         'Restaurant Owner',            'low',    'verified', 'Brazil',         500,  12000, 1080, 0, 0, 'Cash business, deposits consistent with revenue. No red flags.'),
+  makeCustomer(18, 'Samuel Johansson',    'IT Contractor',               'low',    'verified', 'Sweden',         800,  15000, 1340, 0, 0, 'Tech contractor. Regular project invoices. Reliable profile.'),
+  makeCustomer(19, 'Tina Müller',         'Real Estate Developer',       'medium', 'pending',  'Russia',        8000, 300000, 45,   0, 0, 'New account from high-risk jurisdiction. KYC pending. All txns need review.'),
+  makeCustomer(20, 'Nexus Trading LLC',   'Import/Export Trader',        'high',   'verified', 'Iran',         10000, 500000, 120, 9, 2, 'Sanctioned jurisdiction. Two SARs. All transactions must be escalated.'),
+  makeCustomer(21, 'Global Finance Corp', 'Money Services Business',     'high',   'flagged',  'Belarus',       5000, 200000, 80,   7, 1, 'KYC flagged. High-risk country. Prior SAR. Treat all alerts as high priority.'),
+  makeCustomer(22, 'Apex Ventures',       'Real Estate Developer',       'medium', 'verified', 'United States', 5000, 150000, 730, 1, 0, 'Development company. Large project-based transactions expected.'),
+  makeCustomer(23, 'BlueSky Holdings',    'Retail Business Owner',       'low',    'verified', 'United Kingdom', 1000, 50000, 1200, 0, 0, 'Established retailer. Consistent revenue patterns. Low concern.'),
+  makeCustomer(24, 'Marco Russo',         'Construction Contractor',     'high',   'verified', 'Italy',         2000,  20000, 200,  4, 0, 'Prior structuring alerts. Watch for multiple cash deposits under $10K.'),
+  makeCustomer(25, 'Fast Fingers LLC',    'Online Marketplace Seller',   'high',   'pending',  'United States', 500,   5000,  30,   3, 0, 'Very new account. Rapid transactions flagged early. KYC not complete.'),
+  makeCustomer(26, 'Shell Corp Ltd',      'Import/Export Trader',        'high',   'flagged',  'Iran',         50000, 999999, 15,  10, 3, 'Shell company. KYC flagged. Three SARs. Likely front for sanctions evasion.'),
+  makeCustomer(27, 'Old Account 7842',    'Retired',                     'medium', 'verified', 'United States', 50,    2000, 3650, 1, 0, 'Dormant account, last active 2+ years. Sudden activity is suspicious.'),
+  makeCustomer(28, 'Pioneer Financial',   'Money Services Business',     'medium', 'verified', 'United States', 2000, 100000, 890, 2, 0, 'Licensed MSB. Large volume expected but monitor structuring.'),
+  makeCustomer(29, 'Meridian Partners',   'Legal Professional',          'low',    'verified', 'United States', 1000,  80000, 1650, 0, 0, 'Law firm escrow account. Well-documented. Low concern.'),
+];
+
+function findCustomer(name) {
+  return CUSTOMERS.find(c => c.name === name) || null;
+}
+
+// ─────────────────────────────────────────────
+//  RULES
+// ─────────────────────────────────────────────
+
+const HIGH_RISK_COUNTRIES = ['Iran','North Korea','Myanmar','Russia','Cuba','Sudan','Syria','Venezuela','Belarus','Haiti'];
+
+const RULES = [
+  { id:'ctr',       name:'Large Cash (CTR)',          desc:'Cash transaction ≥ $10,000', check:(t)=>t.type==='CASH'&&t.amount>=10000, severity:'red',    hits:0, active:true },
+  { id:'structuring',name:'Structuring / Smurfing',   desc:'Multiple cash deposits just below $10K within 24h', check:(t,h)=>{if(t.type!=='CASH'||t.amount<7000||t.amount>=10000)return false;return h.filter(x=>x.sender===t.sender&&x.type==='CASH'&&x.amount>=7000&&x.amount<10000&&(t.timestamp-x.timestamp)<86400000).length>=2;}, severity:'red', hits:0, active:true },
+  { id:'rapidfire', name:'Rapid Successive Txns',     desc:'3+ transactions from same account within 5 minutes', check:(t,h)=>h.filter(x=>x.sender===t.sender&&(t.timestamp-x.timestamp)<300000).length>=3, severity:'red', hits:0, active:true },
+  { id:'highrisk',  name:'High-Risk Jurisdiction',    desc:'Transaction involving FATF grey-list or sanctioned country', check:(t)=>HIGH_RISK_COUNTRIES.includes(t.country), severity:'red', hits:0, active:true },
+  { id:'roundamt',  name:'Round Dollar Amount',       desc:'Wire or ACH ≥ $5,000 with round amount', check:(t)=>['WIRE','ACH'].includes(t.type)&&t.amount>=5000&&t.amount%1000===0, severity:'yellow', hits:0, active:true },
+  { id:'largewire', name:'Large Wire Transfer',       desc:'Single wire transfer exceeding $50,000', check:(t)=>t.type==='WIRE'&&t.amount>=50000, severity:'yellow', hits:0, active:true },
+  { id:'crypto',    name:'Crypto Conversion',         desc:'Any crypto transaction (elevated ML risk)', check:(t)=>t.type==='CRYPTO', severity:'yellow', hits:0, active:true },
+  { id:'dormant',   name:'Dormant Account Activity',  desc:'Large transaction from dormant account', check:(t)=>t.isDormant&&t.amount>=5000, severity:'red', hits:0, active:true }
+];
+
+const COUNTRIES = ['United States','United Kingdom','Canada','Germany','France','Singapore','Japan','Australia','Switzerland','Brazil','Iran','Russia','Venezuela','North Korea','Myanmar'];
+const COUNTRY_WEIGHTS = [30,10,8,6,5,5,4,4,3,3,0.5,0.5,0.5,0.2,0.3];
+const TYPES = ['WIRE','CASH','ACH','CARD','CRYPTO'];
+const TYPE_WEIGHTS = [20,25,30,20,5];
+const TYPE_ICONS = {WIRE:'🏦',CASH:'💵',ACH:'⚡',CARD:'💳',CRYPTO:'₿'};
+const TYPE_CLASSES = {WIRE:'type-wire',CASH:'type-cash',ACH:'type-ach',CARD:'type-card',CRYPTO:'type-crypto'};
+
+// ─────────────────────────────────────────────
+//  STATE
+// ─────────────────────────────────────────────
+
+let transactions = [];
+let stats = { total:0, alertCount:0, cleared:0, sarCount:0, totalVolume:0, totalRisk:0 };
+let running = true;
+let intervalId = null;
+let speed = 1500;
+let txnCounter = 1;
+
+// ─────────────────────────────────────────────
+//  GENERATORS
+// ─────────────────────────────────────────────
+
+function weightedRandom(items, weights) {
+  let r = Math.random() * weights.reduce((a,b)=>a+b,0);
+  for(let i=0;i<items.length;i++){r-=weights[i];if(r<=0)return items[i];}
+  return items[items.length-1];
+}
+
+function generateTxn(forced={}) {
+  const type = forced.type || weightedRandom(TYPES, TYPE_WEIGHTS);
+  const country = forced.country || weightedRandom(COUNTRIES, COUNTRY_WEIGHTS);
+  const ranges = {WIRE:[1000,200000],CASH:[200,15000],ACH:[100,50000],CARD:[10,2000],CRYPTO:[500,80000]};
+  const [mn,mx] = ranges[type];
+  let amount = forced.amount || Math.round(Math.random()*(mx-mn)+mn);
+  if(!forced.amount && Math.random()<0.15) amount = Math.round(amount/1000)*1000;
+
+  // Pick sender from customer list if possible
+  const eligibleCustomers = CUSTOMERS.filter(c => c.country === country || Math.random() < 0.3);
+  const senderCustomer = forced.sender
+    ? (CUSTOMERS.find(c=>c.name===forced.sender) || null)
+    : (eligibleCustomers.length > 0 && Math.random() < 0.7 ? eligibleCustomers[Math.floor(Math.random()*eligibleCustomers.length)] : null);
+
+  const sender = senderCustomer ? senderCustomer.name : forced.sender || randomName();
+  const receiver = forced.receiver || randomName();
+  const isDormant = forced.isDormant || (senderCustomer?.accountAgeDays > 1000 && Math.random()<0.04) || Math.random()<0.02;
+
+  const txn = {
+    id: `TXN-${String(txnCounter++).padStart(6,'0')}`,
+    timestamp: Date.now(),
+    type, amount, sender, receiver, country, isDormant,
+    accountSuffix: Math.floor(1000+Math.random()*9000),
+    customerProfile: senderCustomer,
+    status: 'clean', riskScore: 0, triggeredRules: []
+  };
+  evaluateTxn(txn);
+  return txn;
+}
+
+const NAMES = ['Alice Chen','Bob Martinez','Carol Singh','David Kim','Elena Novak','Frank Osei','Grace Liu','Henry Patel','Irene Walsh','James Okonkwo','Karen Yamamoto','Luis Reyes','Maya Sharma','Nathan Berg','Olivia Tremblay'];
+const COMPANIES = ['Nexus Trading LLC','Global Finance Corp','Apex Ventures','BlueSky Holdings','Meridian Partners','Summit Capital','Orion Investments'];
+function randomName() { return Math.random()<0.4 ? COMPANIES[Math.floor(Math.random()*COMPANIES.length)] : NAMES[Math.floor(Math.random()*NAMES.length)]; }
+
+function evaluateTxn(txn) {
+  let risk = 0;
+  txn.triggeredRules = [];
+  for(const rule of RULES){
+    if(!rule.active) continue;
+    if(rule.check(txn,transactions)){ txn.triggeredRules.push(rule.id); risk += rule.severity==='red'?40:20; rule.hits++; }
+  }
+  if(HIGH_RISK_COUNTRIES.includes(txn.country)) risk+=15;
+  if(txn.amount>50000) risk+=10;
+  if(txn.isDormant) risk+=10;
+  if(txn.type==='CRYPTO') risk+=10;
+  const cp = txn.customerProfile;
+  if(cp){ if(cp.riskRating==='high') risk+=20; else if(cp.riskRating==='medium') risk+=8; if(cp.pastSARs>0) risk+=15; if(cp.kycStatus==='flagged') risk+=20; else if(cp.kycStatus==='pending') risk+=10; }
+  txn.riskScore = Math.min(100, risk+Math.floor(Math.random()*12));
+  if(txn.triggeredRules.length>0){
+    txn.status = txn.triggeredRules.some(id=>RULES.find(r=>r.id===id)?.severity==='red') ? 'flagged' : 'review';
+  } else if(txn.riskScore>=60){ txn.status='review'; } else { txn.status='clean'; }
+}
+
+// ─────────────────────────────────────────────
+//  DECISION ENGINE
+// ─────────────────────────────────────────────
+
+function getDecision(txn) {
+  const cp = txn.customerProfile;
+  const reasons = [];
+  let score = 0; // higher = more serious
+
+  // Rule-based scoring
+  const triggeredRed = txn.triggeredRules.filter(id=>RULES.find(r=>r.id===id)?.severity==='red');
+  const triggeredYellow = txn.triggeredRules.filter(id=>RULES.find(r=>r.id===id)?.severity==='yellow');
+  score += triggeredRed.length * 3;
+  score += triggeredYellow.length * 1;
+
+  if(cp) {
+    if(cp.pastSARs>0){ score+=4; reasons.push(`Customer has ${cp.pastSARs} prior SAR${cp.pastSARs>1?'s':''} on file`); }
+    if(cp.kycStatus==='flagged'){ score+=4; reasons.push('Customer KYC is flagged — identity not verified'); }
+    if(cp.kycStatus==='pending'){ score+=2; reasons.push('KYC verification still pending for this customer'); }
+    if(cp.riskRating==='high'){ score+=3; reasons.push(`Customer is rated HIGH risk (${cp.occupation})`); }
+    if(cp.riskRating==='medium') score+=1;
+    if(HIGH_RISK_COUNTRIES.includes(cp.country)){ score+=3; reasons.push(`Customer is based in high-risk jurisdiction: ${cp.country}`); }
+    if(txn.amount > cp.typicalMax * 2){ score+=2; reasons.push(`Amount ($${txn.amount.toLocaleString()}) is ${Math.round(txn.amount/cp.typicalMax)}x above typical maximum ($${cp.typicalMax.toLocaleString()})`); }
+    if(txn.amount <= cp.typicalMax && cp.riskRating==='low' && cp.kycStatus==='verified' && cp.pastSARs===0){ score-=3; reasons.push('Transaction amount within customer\'s normal range'); }
+    if(cp.accountAgeDays > 730 && cp.pastAlerts===0){ score-=1; reasons.push('Long-standing account with clean history'); }
+  }
+  if(HIGH_RISK_COUNTRIES.includes(txn.country)){ score+=3; reasons.push(`Transaction routed through sanctioned/high-risk country: ${txn.country}`); }
+  if(txn.isDormant){ score+=2; reasons.push('Account was dormant before this transaction'); }
+
+  let recommendation, cssClass;
+  if(score>=6){
+    recommendation = 'File SAR';
+    cssClass = 'recommend-sar';
+    if(!reasons.some(r=>r.includes('SAR'))) reasons.unshift('Multiple serious red flags present');
+  } else if(score>=3){
+    recommendation = 'Escalate';
+    cssClass = 'recommend-escalate';
+    reasons.unshift('Suspicious indicators present — needs senior analyst review');
+  } else {
+    recommendation = 'Clear';
+    cssClass = 'recommend-clear';
+    if(reasons.length===0) reasons.push('No significant red flags after customer profile review');
+  }
+
+  return { recommendation, cssClass, reasons, score };
+}
+
+// ─────────────────────────────────────────────
+//  UI — RULES
+// ─────────────────────────────────────────────
+
+function renderRules(){
+  document.getElementById('rulesList').innerHTML = RULES.map(r=>`
+    <div class="rule-card ${r.active?'active':''}" onclick="toggleRule('${r.id}')">
+      <div class="rule-header"><div class="rule-name">${r.name}</div><div style="display:flex;align-items:center;gap:6px"><span class="rule-status">${r.active?'ON':'OFF'}</span><span class="toggle"></span></div></div>
+      <div class="rule-desc">${r.desc}</div>
+      ${r.hits>0?`<div class="rule-hits">⚡ ${r.hits} hit${r.hits!==1?'s':''}</div>`:''}
+    </div>`).join('');
+}
+
+function toggleRule(id){
+  const rule=RULES.find(r=>r.id===id); if(!rule) return;
+  rule.active=!rule.active; renderRules();
+  toast(`"${rule.name}" ${rule.active?'enabled':'disabled'}`, rule.active?'success':'warning');
+}
+
+// ─────────────────────────────────────────────
+//  UI — FEED
+// ─────────────────────────────────────────────
+
+function riskClass(s){ return s>=60?'risk-high':s>=30?'risk-med':'risk-low'; }
+
+function addTxnToFeed(txn){
+  const list=document.getElementById('feedList');
+  const div=document.createElement('div');
+  div.className=`txn-row ${txn.status}`;
+  div.setAttribute('data-id',txn.id);
+  div.onclick=()=>openModal(txn);
+  const isLarge=txn.amount>=10000;
+  div.innerHTML=`
+    <div class="txn-id">${txn.id}</div>
+    <div class="txn-parties"><div>${txn.sender}</div><div class="from">→ ${txn.receiver}</div></div>
+    <div style="display:flex;align-items:center;gap:4px;flex-wrap:wrap">
+      <span class="type-badge ${TYPE_CLASSES[txn.type]}">${TYPE_ICONS[txn.type]} ${txn.type}</span>
+      ${txn.country!=='United States'?`<span style="color:var(--muted);font-size:10px">${txn.country}</span>`:''}
+    </div>
+    <div class="txn-amount ${isLarge?'large':''}">$${txn.amount.toLocaleString()}</div>
+    <div class="risk-bar ${riskClass(txn.riskScore)}"><div class="risk-track"><div class="risk-fill" style="width:${txn.riskScore}%"></div></div><div class="risk-score">${txn.riskScore}</div></div>
+    <div>${txn.status==='flagged'?'<span class="status-badge s-alert">ALERT</span>':txn.status==='review'?'<span class="status-badge s-review">REVIEW</span>':'<span class="status-badge s-clear">CLEAR</span>'}</div>`;
+  list.insertBefore(div,list.firstChild);
+  while(list.children.length>200) list.removeChild(list.lastChild);
+}
+
+// ─────────────────────────────────────────────
+//  UI — ALERTS
+// ─────────────────────────────────────────────
+
+function addAlert(txn){
+  document.querySelector('.empty-state')?.remove();
+  const list=document.getElementById('alertList');
+  const ruleNames=txn.triggeredRules.map(id=>RULES.find(r=>r.id===id)?.name).filter(Boolean);
+  const isRed=txn.status==='flagged';
+  const cp=txn.customerProfile;
+  const decision=getDecision(txn);
+
+  const div=document.createElement('div');
+  div.className=`alert-card ${isRed?'alert-red':'alert-yellow'}`;
+  div.setAttribute('data-id',txn.id);
+
+  const customerHTML = cp ? `
+    <div class="customer-strip">
+      <div class="customer-strip-header">
+        <div class="customer-name-row">
+          <div class="customer-avatar" style="background:${cp.color}">${cp.initials}</div>
+          <div>
+            <div class="customer-name">${cp.name}</div>
+            <div class="customer-occupation">${cp.occupation}</div>
+          </div>
+        </div>
+        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">
+          <span class="kyc-badge kyc-${cp.kycStatus}">${cp.kycStatus==='verified'?'✓ KYC Verified':cp.kycStatus==='pending'?'⏳ KYC Pending':'⚠ KYC Flagged'}</span>
+          <span class="risk-rating ${cp.riskRating}" style="font-size:9px;padding:2px 6px">● ${cp.riskRating.toUpperCase()} RISK</span>
+        </div>
+      </div>
+      <div class="customer-stats">
+        <div class="cstat"><div class="cv">$${cp.typicalMin.toLocaleString()}–${cp.typicalMax >= 1000 ? Math.round(cp.typicalMax/1000)+'K' : cp.typicalMax}</div><div class="cl">Typical Range</div></div>
+        <div class="cstat"><div class="cv" style="color:${cp.accountAgeDays>365?'var(--green)':'var(--yellow)'}"> ${cp.accountAgeDays > 365 ? Math.floor(cp.accountAgeDays/365)+'yr' : cp.accountAgeDays+'d'}</div><div class="cl">Acct Age</div></div>
+        <div class="cstat"><div class="cv" style="color:${cp.pastAlerts>0?'var(--yellow)':'var(--green)'}">${cp.pastAlerts}</div><div class="cl">Past Alerts</div></div>
+        <div class="cstat"><div class="cv" style="color:${cp.pastSARs>0?'var(--red)':'var(--green)'}">${cp.pastSARs}</div><div class="cl">Past SARs</div></div>
+      </div>
+      <button onclick="openProfileModal(${cp.id})" style="width:100%;padding:4px;font-size:10px;color:var(--blue);border-color:rgba(88,166,255,.3);background:rgba(88,166,255,.05);border-radius:5px;margin-top:4px">View Full Profile →</button>
+    </div>` : `<div style="margin:4px 10px 8px;padding:8px 10px;background:var(--bg);border:1px solid var(--border);border-radius:8px;font-size:11px;color:var(--muted)">⚠ Unknown sender — not in customer database. KYC required.</div>`;
+
+  const decisionHTML = `
+    <div class="decision-guidance ${decision.cssClass}">
+      <div class="guidance-title">
+        ${decision.recommendation==='File SAR'?'📄 Recommended: File SAR':decision.recommendation==='Escalate'?'↑ Recommended: Escalate':'✓ Recommended: Clear'}
+      </div>
+      <ul class="guidance-reasons">${decision.reasons.map(r=>`<li>${r}</li>`).join('')}</ul>
+    </div>`;
+
+  div.innerHTML=`
+    <div class="alert-top"><div class="alert-id">${txn.id}</div><div class="alert-time">${new Date(txn.timestamp).toLocaleTimeString()}</div></div>
+    <div class="alert-rule">${isRed?'🚨':'⚠️'} ${ruleNames[0]||'Risk Threshold Exceeded'}${ruleNames.length>1?` <span style="color:var(--muted);font-weight:400">+${ruleNames.length-1} more</span>`:''}</div>
+    <div class="alert-txn-detail"><b>$${txn.amount.toLocaleString()}</b> · ${txn.type} · ${txn.country} · Risk: <b>${txn.riskScore}/100</b></div>
+    ${customerHTML}
+    ${decisionHTML}
+    <div class="alert-actions">
+      <button class="btn-clear" onclick="resolveAlert('${txn.id}','clear',this)">✓ Clear</button>
+      <button class="btn-escalate" onclick="resolveAlert('${txn.id}','escalate',this)">↑ Escalate</button>
+      <button class="btn-sar" onclick="resolveAlert('${txn.id}','sar',this)">📄 File SAR</button>
+    </div>`;
+
+  list.insertBefore(div,list.firstChild);
+  updateAlertCount();
+}
+
+function resolveAlert(txnId, action, btn){
+  const card=document.querySelector(`.alert-card[data-id="${txnId}"]`); if(!card) return;
+  if(action==='clear') stats.cleared++;
+  if(action==='sar') stats.sarCount++;
+  card.style.opacity='0.4'; card.style.pointerEvents='none';
+  setTimeout(()=>{ card.remove(); if(!document.querySelector('.alert-card')){ document.getElementById('alertList').innerHTML=`<div class="empty-state"><div class="empty-icon">✅</div><div>All alerts resolved</div><div style="font-size:11px">Nice work, analyst!</div></div>`; } },400);
+  const msgs={clear:['Alert cleared — no further action required','success'],escalate:['Escalated to senior analyst for review','warning'],sar:['SAR filed with FinCEN','error']};
+  toast(...msgs[action]); updateAlertCount(); updateStats(); renderRules();
+}
+
+function updateAlertCount(){
+  const n=document.querySelectorAll('.alert-card').length;
+  const el=document.getElementById('alertCount');
+  el.textContent=n; el.className=`alert-count ${n===0?'zero':''}`;
+  document.getElementById('statReview').textContent=n;
+}
+
+// ─────────────────────────────────────────────
+//  STATS
+// ─────────────────────────────────────────────
+
+function updateStats(){
+  document.getElementById('statTotal').textContent=stats.total.toLocaleString();
+  document.getElementById('statVolume').textContent='$'+Math.round(stats.totalVolume).toLocaleString();
+  document.getElementById('statAlerts').textContent=stats.alertCount.toLocaleString();
+  document.getElementById('statAlertRate').textContent=`${stats.total>0?((stats.alertCount/stats.total)*100).toFixed(1):0}% alert rate`;
+  document.getElementById('statCleared').textContent=stats.cleared.toLocaleString();
+  document.getElementById('statSAR').textContent=`${stats.sarCount} SAR${stats.sarCount!==1?'s':''} filed`;
+  document.getElementById('statAvgRisk').textContent=stats.total>0?Math.round(stats.totalRisk/stats.total):0;
+  document.getElementById('feedCount').textContent=`${stats.total} transactions`;
+}
+
+// ─────────────────────────────────────────────
+//  MAIN LOOP
+// ─────────────────────────────────────────────
+
+function processTxn(txn){
+  transactions.push(txn); stats.total++; stats.totalVolume+=txn.amount; stats.totalRisk+=txn.riskScore;
+  addTxnToFeed(txn);
+  if(txn.status==='flagged'||txn.status==='review'){ stats.alertCount++; addAlert(txn); }
+  updateStats(); renderRules();
+}
+
+function tick(){ processTxn(generateTxn()); }
+
+function startFeed(){ if(intervalId) clearInterval(intervalId); intervalId=setInterval(tick,speed); }
+
+function toggleFeed(){
+  running=!running;
+  const btn=document.getElementById('toggleBtn'), dot=document.getElementById('statusDot');
+  if(running){ startFeed(); btn.textContent='⏸ Pause'; dot.className='status-dot'; toast('Feed resumed','success'); }
+  else { clearInterval(intervalId); btn.textContent='▶ Resume'; dot.className='status-dot paused'; toast('Feed paused','info'); }
+}
+
+function updateSpeed(){ speed=parseInt(document.getElementById('speedSelect').value); if(running) startFeed(); }
+
+// ─────────────────────────────────────────────
+//  INJECT SUSPICIOUS
+// ─────────────────────────────────────────────
+
+const SCENARIOS=[
+  { label:'Structuring Attack (Marco Russo)', txns:[{type:'CASH',amount:9500,sender:'Marco Russo'},{type:'CASH',amount:9200,sender:'Marco Russo'},{type:'CASH',amount:8800,sender:'Marco Russo'}] },
+  { label:'Sanctioned Country Wire (Shell Corp)', txns:[{type:'WIRE',amount:75000,country:'Iran',sender:'Shell Corp Ltd'}] },
+  { label:'Rapid Fire (Fast Fingers LLC)', txns:Array(4).fill(null).map(()=>({type:'ACH',amount:Math.floor(Math.random()*5000+1000),sender:'Fast Fingers LLC'})) },
+  { label:'PEP Transaction (Quinn McCarthy)', txns:[{type:'WIRE',amount:95000,sender:'Quinn McCarthy',country:'Venezuela'}] },
+  { label:'Dormant Account Spike', txns:[{type:'WIRE',amount:45000,isDormant:true,sender:'Old Account 7842'}] },
+  { label:'Crypto — High Risk Customer', txns:[{type:'CRYPTO',amount:80000,sender:'Nathan Berg'}] }
+];
+
+function injectSuspicious(){
+  const s=SCENARIOS[Math.floor(Math.random()*SCENARIOS.length)];
+  toast(`🎯 Injecting: ${s.label}`,'error');
+  s.txns.forEach((opts,i)=>setTimeout(()=>processTxn(generateTxn(opts)),i*220));
+}
+
+// ─────────────────────────────────────────────
+//  TRANSACTION MODAL
+// ─────────────────────────────────────────────
+
+function openModal(txn){
+  const ruleNames=txn.triggeredRules.map(id=>RULES.find(r=>r.id===id)).filter(Boolean);
+  const cp=txn.customerProfile;
+  const decision=getDecision(txn);
+  document.getElementById('modalTitle').textContent=`${txn.id} — Detail`;
+  document.getElementById('modalBody').innerHTML=`
+    <div class="modal-section">
+      <h4>Transaction</h4>
+      <div class="modal-grid">
+        <div class="modal-field"><label>Sender</label><div class="val">${txn.sender}</div></div>
+        <div class="modal-field"><label>Receiver</label><div class="val">${txn.receiver}</div></div>
+        <div class="modal-field"><label>Amount</label><div class="val" style="color:var(--orange)">$${txn.amount.toLocaleString()}</div></div>
+        <div class="modal-field"><label>Type</label><div class="val">${TYPE_ICONS[txn.type]} ${txn.type}</div></div>
+        <div class="modal-field"><label>Country</label><div class="val">${txn.country}</div></div>
+        <div class="modal-field"><label>Account</label><div class="val" style="font-family:monospace">****${txn.accountSuffix}</div></div>
+        <div class="modal-field"><label>Risk Score</label><div class="val" style="color:${txn.riskScore>=60?'var(--red)':txn.riskScore>=30?'var(--yellow)':'var(--green)'}">${txn.riskScore}/100</div></div>
+        <div class="modal-field"><label>Status</label><div class="val">${txn.status==='flagged'?'🚨 ALERT':txn.status==='review'?'⚠️ REVIEW':'✅ CLEAR'}</div></div>
+      </div>
+    </div>
+    ${ruleNames.length>0?`<div class="modal-section"><h4>Triggered Rules</h4>${ruleNames.map(r=>`<div class="flag-item"><span style="font-size:14px">${r.severity==='red'?'🚨':'⚠️'}</span><div><b>${r.name}</b><br><span style="color:var(--muted);font-size:11px">${r.desc}</span></div></div>`).join('')}</div>`:''}
+    ${cp?`<div class="divider"></div><div class="modal-section"><h4>Customer Profile</h4><div class="profile-card">
+      <div class="profile-header"><div class="profile-avatar" style="background:${cp.color}">${cp.initials}</div><div><div class="profile-name">${cp.name}</div><div class="profile-sub">${cp.occupation} · ${cp.country}</div></div></div>
+      <div class="profile-stats">
+        <div class="pstat"><div class="pv"><span class="risk-rating ${cp.riskRating}">${cp.riskRating.toUpperCase()}</span></div><div class="pl">Risk Rating</div></div>
+        <div class="pstat"><div class="pv"><span class="kyc-badge kyc-${cp.kycStatus}">${cp.kycStatus}</span></div><div class="pl">KYC Status</div></div>
+        <div class="pstat"><div class="pv" style="color:${cp.pastSARs>0?'var(--red)':'var(--green)'}">${cp.pastSARs}</div><div class="pl">Past SARs</div></div>
+        <div class="pstat"><div class="pv" style="color:${cp.pastAlerts>0?'var(--yellow)':'var(--green)'}">${cp.pastAlerts}</div><div class="pl">Past Alerts</div></div>
+      </div>
+      <div style="font-size:11px;color:var(--muted);line-height:1.5;margin-bottom:10px">${cp.notes}</div>
+      <div style="font-size:11px;color:var(--muted)">Typical transaction range: <b style="color:var(--text)">$${cp.typicalMin.toLocaleString()} – $${cp.typicalMax.toLocaleString()}</b></div>
+    </div></div>`:''}
+    <div class="divider"></div>
+    <div class="modal-section"><h4>Analyst Recommendation</h4>
+      <div class="decision-guidance ${decision.cssClass}" style="margin:0">
+        <div class="guidance-title">${decision.recommendation==='File SAR'?'📄 File SAR':decision.recommendation==='Escalate'?'↑ Escalate':'✓ Clear'}</div>
+        <ul class="guidance-reasons">${decision.reasons.map(r=>`<li>${r}</li>`).join('')}</ul>
+      </div>
+    </div>`;
+  document.getElementById('modalBackdrop').classList.add('open');
+}
+
+function closeModal(e){ if(e.target===document.getElementById('modalBackdrop')) document.getElementById('modalBackdrop').classList.remove('open'); }
+
+// ─────────────────────────────────────────────
+//  CUSTOMER PROFILE MODAL
+// ─────────────────────────────────────────────
+
+function openProfileModal(customerId){
+  const cp=CUSTOMERS.find(c=>c.id===customerId); if(!cp) return;
+  document.getElementById('profileModalTitle').textContent=`Customer Profile — ${cp.name}`;
+  const recentTxns=transactions.filter(t=>t.sender===cp.name||t.receiver===cp.name).slice(-8).reverse();
+  document.getElementById('profileModalBody').innerHTML=`
+    <div class="profile-card" style="margin-bottom:14px">
+      <div class="profile-header">
+        <div class="profile-avatar" style="background:${cp.color};width:50px;height:50px;font-size:20px">${cp.initials}</div>
+        <div>
+          <div class="profile-name" style="font-size:17px">${cp.name}</div>
+          <div class="profile-sub">${cp.occupation}</div>
+          <div style="margin-top:5px;display:flex;gap:6px;flex-wrap:wrap">
+            <span class="kyc-badge kyc-${cp.kycStatus}">${cp.kycStatus==='verified'?'✓ KYC Verified':cp.kycStatus==='pending'?'⏳ KYC Pending':'⚠ KYC Flagged'}</span>
+            <span class="risk-rating ${cp.riskRating}">● ${cp.riskRating.toUpperCase()} RISK</span>
+          </div>
+        </div>
+      </div>
+      <div class="profile-stats">
+        <div class="pstat"><div class="pv">${cp.country}</div><div class="pl">Country</div></div>
+        <div class="pstat"><div class="pv">${cp.accountAgeDays > 365 ? Math.floor(cp.accountAgeDays/365)+'yr' : cp.accountAgeDays+'d'}</div><div class="pl">Acct Age</div></div>
+        <div class="pstat"><div class="pv" style="color:${cp.pastAlerts>0?'var(--yellow)':'var(--green)'}">${cp.pastAlerts}</div><div class="pl">Past Alerts</div></div>
+        <div class="pstat"><div class="pv" style="color:${cp.pastSARs>0?'var(--red)':'var(--green)'}">${cp.pastSARs}</div><div class="pl">Past SARs</div></div>
+      </div>
+    </div>
+    <div class="modal-section"><h4>Analyst Notes</h4><div style="font-size:12px;line-height:1.6;color:var(--muted);background:var(--surface2);padding:10px;border-radius:6px">${cp.notes}</div></div>
+    <div class="modal-section"><h4>Expected Behaviour</h4>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        <div class="pstat" style="background:var(--surface2);padding:10px;border-radius:6px;text-align:left"><div class="pl" style="margin-bottom:4px">Typical Transaction Range</div><div style="font-size:14px;font-weight:700">$${cp.typicalMin.toLocaleString()} – $${cp.typicalMax.toLocaleString()}</div></div>
+        <div class="pstat" style="background:var(--surface2);padding:10px;border-radius:6px;text-align:left"><div class="pl" style="margin-bottom:4px">Home Country</div><div style="font-size:14px;font-weight:700">${cp.country} ${HIGH_RISK_COUNTRIES.includes(cp.country)?'⚠️':''}</div></div>
+      </div>
+    </div>
+    ${recentTxns.length>0?`<div class="modal-section"><h4>Recent Transactions (this session)</h4>${recentTxns.map(t=>`<div class="txn-history-row"><span>${t.id}</span><span class="type-badge ${TYPE_CLASSES[t.type]}">${t.type}</span><span>$${t.amount.toLocaleString()}</span><span class="${t.status==='flagged'?'s-alert':t.status==='review'?'s-review':'s-clear'} status-badge">${t.status.toUpperCase()}</span></div>`).join('')}</div>`:''}
+    <div class="modal-section"><h4>Decision Guide for this Customer</h4>
+      <div style="display:flex;flex-direction:column;gap:8px;font-size:11px">
+        <div style="padding:8px 10px;background:rgba(63,185,80,.08);border:1px solid rgba(63,185,80,.3);border-radius:6px"><b style="color:var(--green)">✓ Clear</b> — If transaction is within $${cp.typicalMin.toLocaleString()}–$${cp.typicalMax.toLocaleString()} range, ${cp.kycStatus==='verified'?'KYC is clean':'pending KYC is resolved'}, and no new rule triggers.</div>
+        <div style="padding:8px 10px;background:rgba(210,153,34,.08);border:1px solid rgba(210,153,34,.3);border-radius:6px"><b style="color:var(--yellow)">↑ Escalate</b> — If transaction is above typical range, unusual country involved, or ${cp.riskRating==='high'?'any alert (customer is HIGH risk)':'multiple rules trigger simultaneously'}.</div>
+        <div style="padding:8px 10px;background:rgba(248,81,73,.08);border:1px solid rgba(248,81,73,.3);border-radius:6px"><b style="color:var(--red)">📄 File SAR</b> — ${cp.pastSARs>0?`This customer already has ${cp.pastSARs} SAR(s). `:''} ${cp.riskRating==='high'?'High-risk customer — file SAR if pattern is clear.':'File SAR if structuring, sanctions, or layering patterns are confirmed.'}</div>
+      </div>
+    </div>`;
+  document.getElementById('profileModalBackdrop').classList.add('open');
+}
+
+function closeProfileModal(e){ if(e.target===document.getElementById('profileModalBackdrop')) document.getElementById('profileModalBackdrop').classList.remove('open'); }
+
+// ─────────────────────────────────────────────
+//  TOAST
+// ─────────────────────────────────────────────
+
+function toast(msg, type='info'){
+  const el=document.createElement('div'); el.className=`toast ${type}`; el.textContent=msg;
+  document.getElementById('toastContainer').appendChild(el);
+  setTimeout(()=>{ el.style.opacity='0'; el.style.transition='opacity .3s'; setTimeout(()=>el.remove(),300); },3000);
+}
+
+// ─────────────────────────────────────────────
+//  INIT
+// ─────────────────────────────────────────────
+
+renderRules();
+startFeed();
+</script>
+</body>
+</html>
