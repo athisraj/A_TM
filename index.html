@@ -157,6 +157,10 @@
     .disposition-reason-box .reason-buttons button { padding: 5px 10px; font-size: 10px; border-radius: 5px; }
     .case-disposition { font-size: 11px; background: var(--bg); border-radius: 6px; padding: 6px 8px; color: var(--muted); }
     .case-disposition b { color: var(--text); }
+    .maker-checker-banner { background: rgba(210,153,34,.08); border: 1px solid rgba(210,153,34,.35); border-radius: 8px; padding: 8px 10px; }
+    .mc-title { font-weight: 700; color: var(--yellow); font-size: 11px; margin-bottom: 4px; }
+    .mc-detail { font-size: 11px; color: var(--text); margin-bottom: 4px; }
+    .mc-note { font-size: 10px; color: var(--muted); }
 
     /* Customer Profile Strip */
     .customer-strip { margin: 0 10px 8px; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 9px 11px; }
@@ -811,6 +815,7 @@ function buildCaseCardHTML(c){
   const uniqueRules = [...new Set(linkedTxns.flatMap(t=>t.triggeredRules))].map(id=>RULES.find(r=>r.id===id)).filter(Boolean);
   const behavior = getCustomerBehavior(c.customerName, transactions);
   const isActive = c.status !== 'closed';
+  const pending = c.pendingApproval;
 
   const customerHTML = cp ? `
     <div class="customer-strip">
@@ -847,7 +852,7 @@ function buildCaseCardHTML(c){
 
   const dispositionHTML = c.disposition ? `<div class="case-disposition"><b>${c.disposition.action}</b> — "${c.disposition.reason}" <span class="audit-time" style="margin-left:4px">${new Date(c.disposition.at).toLocaleTimeString()}</span></div>` : '';
 
-  const actionsHTML = isActive ? `
+  const actionsHTML = isActive && !pending ? `
     <div class="case-status-row">
       <label>Status:</label>
       <select onchange="setCaseStatus('${c.id}', this.value)">
@@ -862,11 +867,22 @@ function buildCaseCardHTML(c){
       <div class="case-sla-text" id="slaText-${c.id}"></div>
     </div>` : '';
 
+  const pendingApprovalHTML = pending ? `
+    <div class="maker-checker-banner">
+      <div class="mc-title">⏳ Pending Checker Approval</div>
+      <div class="mc-detail"><b>${pending.action}</b> — "${pending.reason}"</div>
+      <div class="mc-note">Four-eyes control: a second analyst must approve before this SAR is filed.</div>
+    </div>` : '';
+
   const complianceHitsAll = linkedTxns.flatMap(t=>t.complianceHits||[]);
   const uniqueComplianceHits = [...new Map(complianceHitsAll.map(h=>[`${h.type}-${h.name}`,h])).values()];
   const complianceHTML = uniqueComplianceHits.length>0 ? `<div class="case-rules">${uniqueComplianceHits.map(h=>`<span class="type-badge" style="background:${h.type==='sanctions'?'rgba(248,81,73,.25)':'rgba(188,140,255,.2)'};color:${h.type==='sanctions'?'var(--red)':'var(--purple)'};font-weight:700">${h.type==='sanctions'?'🔒 SANCTIONS':'🏛 PEP'} — ${h.name} (${h.party})</span>`).join('')}</div>` : '';
 
-  const dispositionButtonsHTML = isActive ? `
+  const dispositionButtonsHTML = isActive ? (pending ? `
+    <div class="alert-actions">
+      <button class="btn-clear" onclick="approveDisposition('${c.id}')">✓ Approve (Checker)</button>
+      <button class="btn-sar" onclick="rejectDisposition('${c.id}')">✗ Reject</button>
+    </div>` : `
     <div class="alert-actions">
       <button class="btn-clear" ${decision.sanctionsHit?'disabled title="Sanctions matches cannot be cleared — escalate or file a SAR"':''} onclick="promptDisposition('${c.id}','Cleared')">✓ Clear</button>
       <button class="btn-escalate" onclick="promptDisposition('${c.id}','Escalated')">↑ Escalate</button>
@@ -878,13 +894,16 @@ function buildCaseCardHTML(c){
         <button class="btn-clear" onclick="confirmDisposition('${c.id}')">Confirm</button>
         <button onclick="cancelDisposition('${c.id}')">Cancel</button>
       </div>
-    </div>` : '';
+    </div>`) : '';
 
   return `
     <div class="case-body">
       <div class="case-top">
         <div class="case-id">${c.id} <span style="color:var(--muted);font-weight:400">· ${c.customerName}</span></div>
-        <span class="case-status-badge cs-${c.status}">${STATUS_LABELS[c.status]}</span>
+        <div style="display:flex;gap:4px;align-items:center">
+          <span class="case-status-badge cs-${c.status}">${STATUS_LABELS[c.status]}</span>
+          ${pending?'<span class="case-status-badge" style="background:rgba(210,153,34,.2);color:var(--yellow)">⏳ PENDING</span>':''}
+        </div>
       </div>
       <div class="case-meta">${linkedTxns.length} linked alert${linkedTxns.length!==1?'s':''} · opened ${new Date(c.createdAt).toLocaleTimeString()}</div>
       ${customerHTML}
@@ -897,6 +916,7 @@ function buildCaseCardHTML(c){
       <div class="case-alerts-list">${alertsListHTML}</div>
       <div class="case-audit"><h5>Audit Trail</h5>${auditHTML}</div>
       ${dispositionHTML}
+      ${pendingApprovalHTML}
       ${actionsHTML}
     </div>
     ${dispositionButtonsHTML}`;
@@ -930,6 +950,7 @@ function setCaseStatus(caseId, newStatus){
 
 function promptDisposition(caseId, action){
   const c = cases.find(x=>x.id===caseId); if(!c) return;
+  if(c.pendingApproval){ toast('This case has a SAR pending checker approval', 'warning'); return; }
   if(action==='Cleared' && getCaseDecision(c).sanctionsHit){ toast('Sanctions matches cannot be cleared — escalate or file a SAR', 'error'); return; }
   pendingDisposition[caseId] = action;
   const box = document.getElementById(`reasonBox-${caseId}`);
@@ -948,11 +969,27 @@ function confirmDisposition(caseId){
   const reason = input ? input.value.trim() : '';
   if(!reason){ toast('A disposition reason is required to close a case', 'warning'); return; }
   const c = cases.find(x=>x.id===caseId); if(!c) return;
+  delete pendingDisposition[caseId];
+
+  if(action==='SAR Filed'){
+    // Filing a SAR is a regulatory submission, not just an analyst
+    // opinion -- real banks require a second reviewer's sign-off
+    // (four-eyes / maker-checker) before it actually goes out.
+    c.pendingApproval = { action, reason, submittedAt: Date.now() };
+    c.auditTrail.push({ ts:Date.now(), action:'Submitted for approval', note:`${action} — ${reason}` });
+    upsertCaseCard(c);
+    toast('SAR submitted — requires checker approval before filing', 'info');
+    return;
+  }
+
+  finalizeDisposition(c, action, reason);
+}
+
+function finalizeDisposition(c, action, reason){
   c.status = 'closed';
   c.disposition = { action, reason, at: Date.now() };
   c.updatedAt = Date.now();
   c.auditTrail.push({ ts:Date.now(), action, note:reason });
-  delete pendingDisposition[caseId];
   if(action==='Cleared') stats.cleared++;
   if(action==='SAR Filed') stats.sarCount++;
 
@@ -970,6 +1007,23 @@ function confirmDisposition(caseId){
   toast(...msgs[action]);
   upsertCaseCard(c);
   updateStats(); renderRules();
+}
+
+function approveDisposition(caseId){
+  const c = cases.find(x=>x.id===caseId); if(!c || !c.pendingApproval) return;
+  const { action, reason } = c.pendingApproval;
+  delete c.pendingApproval;
+  c.auditTrail.push({ ts:Date.now(), action:'Approved by checker', note:'Second-analyst sign-off confirmed' });
+  finalizeDisposition(c, action, reason);
+}
+
+function rejectDisposition(caseId){
+  const c = cases.find(x=>x.id===caseId); if(!c || !c.pendingApproval) return;
+  const { action } = c.pendingApproval;
+  delete c.pendingApproval;
+  c.auditTrail.push({ ts:Date.now(), action:'Rejected by checker', note:`${action} rejected — returned to analyst for rework` });
+  upsertCaseCard(c);
+  toast(`${c.id}: disposition rejected by checker — returned for rework`, 'warning');
 }
 
 function updateCaseQueueCount(){
@@ -1085,7 +1139,7 @@ function openModal(txn){
   const linkedCase=cases.find(c=>c.alertIds.includes(txn.id));
   document.getElementById('modalTitle').textContent=`${txn.id} — Detail`;
   document.getElementById('modalBody').innerHTML=`
-    ${linkedCase?`<button onclick="highlightCase('${linkedCase.id}')" style="width:100%;text-align:left;padding:8px 10px;margin-bottom:14px;background:rgba(88,166,255,.08);border:1px solid rgba(88,166,255,.3);border-radius:6px;color:var(--blue);font-size:11px;cursor:pointer">🗂 Part of ${linkedCase.id} (${STATUS_LABELS[linkedCase.status]}, ${linkedCase.alertIds.length} linked alert${linkedCase.alertIds.length!==1?'s':''}) — View Case →</button>`:''}
+    ${linkedCase?`<button onclick="highlightCase('${linkedCase.id}')" style="width:100%;text-align:left;padding:8px 10px;margin-bottom:14px;background:rgba(88,166,255,.08);border:1px solid rgba(88,166,255,.3);border-radius:6px;color:var(--blue);font-size:11px;cursor:pointer">🗂 Part of ${linkedCase.id} (${STATUS_LABELS[linkedCase.status]}${linkedCase.pendingApproval?' · Pending Approval':''}, ${linkedCase.alertIds.length} linked alert${linkedCase.alertIds.length!==1?'s':''}) — View Case →</button>`:''}
     <div class="modal-section">
       <h4>Transaction</h4>
       <div class="modal-grid">
