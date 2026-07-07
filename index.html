@@ -112,16 +112,34 @@
     .empty-state { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; color: var(--muted); gap: 8px; padding: 40px; text-align: center; }
     .empty-icon { font-size: 32px; }
 
-    /* Alert Card */
-    .alert-card { background: var(--surface2); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; animation: slideIn .3s ease; }
-    .alert-card.alert-red { border-left: 3px solid var(--red); }
-    .alert-card.alert-yellow { border-left: 3px solid var(--yellow); }
-    .alert-top { padding: 10px 12px 0; display: flex; justify-content: space-between; align-items: flex-start; }
-    .alert-id { font-family: monospace; font-size: 11px; color: var(--muted); }
-    .alert-time { font-size: 10px; color: var(--muted); }
-    .alert-rule { padding: 4px 12px 0; font-size: 11px; font-weight: 600; color: var(--red); }
-    .alert-yellow .alert-rule { color: var(--yellow); }
-    .alert-txn-detail { padding: 4px 12px 8px; font-size: 11px; color: var(--muted); line-height: 1.5; }
+    /* Case Card */
+    .case-card { background: var(--surface2); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; animation: slideIn .3s ease; }
+    .case-card.case-closed { opacity: .55; }
+    .case-body { padding: 10px 12px 0; display: flex; flex-direction: column; gap: 8px; }
+    .case-body:last-child { padding-bottom: 10px; }
+    .case-top { display: flex; justify-content: space-between; align-items: center; }
+    .case-id { font-family: monospace; font-size: 11px; color: var(--muted); font-weight: 700; }
+    .case-status-badge { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: .4px; padding: 2px 8px; border-radius: 10px; white-space: nowrap; }
+    .cs-open { background: rgba(88,166,255,.15); color: var(--blue); }
+    .cs-in_review { background: rgba(210,153,34,.15); color: var(--yellow); }
+    .cs-pending_info { background: rgba(188,140,255,.15); color: var(--purple); }
+    .cs-closed { background: rgba(63,185,80,.12); color: var(--green); }
+    .case-meta { font-size: 10px; color: var(--muted); }
+    .case-rules { display: flex; flex-wrap: wrap; gap: 4px; }
+    .case-rules .type-badge { font-size: 9px; }
+    .case-alerts-list { display: flex; flex-direction: column; gap: 3px; max-height: 110px; overflow-y: auto; }
+    .case-audit { border-top: 1px solid var(--border); padding-top: 6px; }
+    .case-audit h5 { font-size: 9px; text-transform: uppercase; letter-spacing: .5px; color: var(--muted); margin-bottom: 4px; font-weight: 700; }
+    .audit-row { font-size: 10px; color: var(--muted); margin-bottom: 2px; line-height: 1.4; }
+    .audit-time { font-family: monospace; color: var(--muted); margin-right: 4px; }
+    .case-status-row { display: flex; align-items: center; gap: 6px; font-size: 10px; color: var(--muted); }
+    .case-status-row select { flex: 1; font-size: 10px; padding: 3px 6px; }
+    .disposition-reason-box { display: flex; flex-direction: column; gap: 6px; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 8px; margin: 0 12px 10px; }
+    .disposition-reason-box textarea { width: 100%; min-height: 50px; background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-family: inherit; font-size: 11px; padding: 6px; resize: vertical; }
+    .disposition-reason-box .reason-buttons { display: flex; gap: 6px; }
+    .disposition-reason-box .reason-buttons button { padding: 5px 10px; font-size: 10px; border-radius: 5px; }
+    .case-disposition { font-size: 11px; background: var(--bg); border-radius: 6px; padding: 6px 8px; color: var(--muted); }
+    .case-disposition b { color: var(--text); }
 
     /* Customer Profile Strip */
     .customer-strip { margin: 0 10px 8px; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 9px 11px; }
@@ -242,7 +260,7 @@
     </div>
     <div class="stat-card">
       <div class="stat-icon" style="background:rgba(210,153,34,.1)">⚠️</div>
-      <div><div class="label">Pending Review</div><div class="value" style="color:var(--yellow)" id="statReview">0</div><div class="delta">Awaiting analyst</div></div>
+      <div><div class="label">Open Cases</div><div class="value" style="color:var(--yellow)" id="statReview">0</div><div class="delta">Awaiting analyst</div></div>
     </div>
     <div class="stat-card">
       <div class="stat-icon" style="background:rgba(63,185,80,.1)">✅</div>
@@ -273,17 +291,17 @@
     <div id="feedList"></div>
   </div>
 
-  <!-- Alerts Panel -->
+  <!-- Case Queue -->
   <div class="alerts-panel">
     <div class="panel-header">
-      <h2>Alert Queue</h2>
+      <h2>Case Queue</h2>
       <span class="alert-count zero" id="alertCount">0</span>
     </div>
     <div class="alert-list" id="alertList">
       <div class="empty-state">
         <div class="empty-icon">🔍</div>
-        <div>No alerts yet</div>
-        <div style="font-size:11px">Flagged transactions will appear here</div>
+        <div>No cases yet</div>
+        <div style="font-size:11px">A case opens automatically the first time a customer is flagged</div>
       </div>
     </div>
   </div>
@@ -407,6 +425,10 @@ const TYPE_CLASSES = {WIRE:'type-wire',CASH:'type-cash',ACH:'type-ach',CARD:'typ
 // ─────────────────────────────────────────────
 
 let transactions = [];
+const txnById = new Map();
+let cases = [];
+let caseCounter = 1;
+const pendingDisposition = {};
 let stats = { total:0, alertCount:0, cleared:0, sarCount:0, totalVolume:0, totalRisk:0 };
 let running = true;
 let intervalId = null;
@@ -588,20 +610,51 @@ function addTxnToFeed(txn){
 }
 
 // ─────────────────────────────────────────────
-//  UI — ALERTS
+//  CASE MANAGEMENT
 // ─────────────────────────────────────────────
+//
+// Real analysts don't dispose of one transaction at a time — every alert
+// on a customer feeds into a single case, which carries its own status,
+// an audit trail, and a written disposition reason when it's closed.
 
-function addAlert(txn){
-  document.querySelector('.empty-state')?.remove();
-  const list=document.getElementById('alertList');
-  const ruleNames=txn.triggeredRules.map(id=>RULES.find(r=>r.id===id)?.name).filter(Boolean);
-  const isRed=txn.status==='flagged';
-  const cp=txn.customerProfile;
-  const decision=getDecision(txn);
+const STATUS_LABELS = { open:'Open', in_review:'In Review', pending_info:'Pending Info', closed:'Closed' };
 
-  const div=document.createElement('div');
-  div.className=`alert-card ${isRed?'alert-red':'alert-yellow'}`;
-  div.setAttribute('data-id',txn.id);
+function getOrCreateCase(txn){
+  let c = cases.find(c => c.customerName===txn.sender && c.status!=='closed');
+  const ruleLabel = txn.triggeredRules.map(id=>RULES.find(r=>r.id===id)?.name).filter(Boolean)[0] || 'Risk threshold exceeded';
+  if(!c){
+    c = { id:`CASE-${String(caseCounter++).padStart(5,'0')}`, customerName:txn.sender, cp:txn.customerProfile, status:'open', alertIds:[], createdAt:txn.timestamp, updatedAt:txn.timestamp, auditTrail:[], disposition:null };
+    cases.push(c);
+    c.auditTrail.push({ ts:txn.timestamp, action:'Case opened', note:`Opened on ${txn.id} — ${ruleLabel}` });
+  } else {
+    if(!c.cp && txn.customerProfile) c.cp = txn.customerProfile;
+    c.auditTrail.push({ ts:txn.timestamp, action:'Alert linked', note:`${txn.id} — ${ruleLabel}` });
+  }
+  c.alertIds.push(txn.id);
+  c.updatedAt = txn.timestamp;
+  return c;
+}
+
+function getCaseDecision(c){
+  const rank = { 'File SAR':3, 'Escalate':2, 'Clear':1 };
+  const linkedTxns = c.alertIds.map(id=>txnById.get(id)).filter(Boolean);
+  let worst = null;
+  const reasons = new Set();
+  for(const t of linkedTxns){
+    const d = getDecision(t);
+    d.reasons.forEach(r=>reasons.add(r));
+    if(!worst || rank[d.recommendation] > rank[worst.recommendation]) worst = d;
+  }
+  return { recommendation: worst ? worst.recommendation : 'Clear', cssClass: worst ? worst.cssClass : 'recommend-clear', reasons:[...reasons] };
+}
+
+function buildCaseCardHTML(c){
+  const linkedTxns = c.alertIds.map(id=>txnById.get(id)).filter(Boolean);
+  const cp = c.cp;
+  const decision = getCaseDecision(c);
+  const uniqueRules = [...new Set(linkedTxns.flatMap(t=>t.triggeredRules))].map(id=>RULES.find(r=>r.id===id)).filter(Boolean);
+  const behavior = getCustomerBehavior(c.customerName, transactions);
+  const isActive = c.status !== 'closed';
 
   const customerHTML = cp ? `
     <div class="customer-strip">
@@ -624,47 +677,124 @@ function addAlert(txn){
         <div class="cstat"><div class="cv" style="color:${cp.pastAlerts>0?'var(--yellow)':'var(--green)'}">${cp.pastAlerts}</div><div class="cl">Past Alerts</div></div>
         <div class="cstat"><div class="cv" style="color:${cp.pastSARs>0?'var(--red)':'var(--green)'}">${cp.pastSARs}</div><div class="cl">Past SARs</div></div>
       </div>
-      ${txn.behavior ? `<div style="margin-top:6px;padding:6px 8px;background:var(--bg);border-radius:6px;font-size:10px;color:var(--muted)">Session baseline: ${txn.behavior.count} prior txn${txn.behavior.count!==1?'s':''}, avg $${Math.round(txn.behavior.mean).toLocaleString()}${txn.behavior.count>=5?` · this txn is <b style="color:${txn.behavior.z>=3?'var(--red)':txn.behavior.z>=2?'var(--yellow)':'var(--text)'}">${txn.behavior.z>=0?'+':''}${txn.behavior.z.toFixed(1)}σ</b>`:' · baseline still building (needs 5+)'}</div>` : ''}
+      ${behavior ? `<div style="margin-top:6px;padding:6px 8px;background:var(--bg);border-radius:6px;font-size:10px;color:var(--muted)">Session baseline: ${behavior.count} txn${behavior.count!==1?'s':''}, avg $${Math.round(behavior.mean).toLocaleString()}</div>` : ''}
       <button onclick="openProfileModal(${cp.id})" style="width:100%;padding:4px;font-size:10px;color:var(--blue);border-color:rgba(88,166,255,.3);background:rgba(88,166,255,.05);border-radius:5px;margin-top:4px">View Full Profile →</button>
-    </div>` : `<div style="margin:4px 10px 8px;padding:8px 10px;background:var(--bg);border:1px solid var(--border);border-radius:8px;font-size:11px;color:var(--muted)">⚠ Unknown sender — not in customer database. KYC required.</div>`;
+    </div>` : `<div style="margin:0 0 4px;padding:8px 10px;background:var(--bg);border:1px solid var(--border);border-radius:8px;font-size:11px;color:var(--muted)">⚠ Unknown sender — not in customer database. KYC required.</div>`;
 
-  const decisionHTML = `
-    <div class="decision-guidance ${decision.cssClass}">
-      <div class="guidance-title">
-        ${decision.recommendation==='File SAR'?'📄 Recommended: File SAR':decision.recommendation==='Escalate'?'↑ Recommended: Escalate':'✓ Recommended: Clear'}
-      </div>
-      <ul class="guidance-reasons">${decision.reasons.map(r=>`<li>${r}</li>`).join('')}</ul>
-    </div>`;
+  const alertsListHTML = linkedTxns.slice(-6).reverse().map(t=>`
+    <div class="txn-history-row" style="cursor:pointer" onclick='openModal(txnById.get("${t.id}"))'>
+      <span>${t.id}</span><span class="type-badge ${TYPE_CLASSES[t.type]}">${t.type}</span><span>$${t.amount.toLocaleString()}</span>
+      <span class="${t.status==='flagged'?'s-alert':'s-review'} status-badge">Risk ${t.riskScore}</span>
+    </div>`).join('');
 
-  div.innerHTML=`
-    <div class="alert-top"><div class="alert-id">${txn.id}</div><div class="alert-time">${new Date(txn.timestamp).toLocaleTimeString()}</div></div>
-    <div class="alert-rule">${isRed?'🚨':'⚠️'} ${ruleNames[0]||'Risk Threshold Exceeded'}${ruleNames.length>1?` <span style="color:var(--muted);font-weight:400">+${ruleNames.length-1} more</span>`:''}</div>
-    <div class="alert-txn-detail"><b>$${txn.amount.toLocaleString()}</b> · ${txn.type} · ${txn.country} · Risk: <b>${txn.riskScore}/100</b></div>
-    ${customerHTML}
-    ${decisionHTML}
+  const auditHTML = c.auditTrail.slice(-4).reverse().map(a=>`<div class="audit-row"><span class="audit-time">${new Date(a.ts).toLocaleTimeString()}</span>${a.action}${a.note?` — ${a.note}`:''}</div>`).join('');
+
+  const dispositionHTML = c.disposition ? `<div class="case-disposition"><b>${c.disposition.action}</b> — "${c.disposition.reason}" <span class="audit-time" style="margin-left:4px">${new Date(c.disposition.at).toLocaleTimeString()}</span></div>` : '';
+
+  const actionsHTML = isActive ? `
+    <div class="case-status-row">
+      <label>Status:</label>
+      <select onchange="setCaseStatus('${c.id}', this.value)">
+        <option value="open" ${c.status==='open'?'selected':''}>Open</option>
+        <option value="in_review" ${c.status==='in_review'?'selected':''}>In Review</option>
+        <option value="pending_info" ${c.status==='pending_info'?'selected':''}>Pending Info</option>
+      </select>
+    </div>` : '';
+
+  const dispositionButtonsHTML = isActive ? `
     <div class="alert-actions">
-      <button class="btn-clear" onclick="resolveAlert('${txn.id}','clear',this)">✓ Clear</button>
-      <button class="btn-escalate" onclick="resolveAlert('${txn.id}','escalate',this)">↑ Escalate</button>
-      <button class="btn-sar" onclick="resolveAlert('${txn.id}','sar',this)">📄 File SAR</button>
-    </div>`;
+      <button class="btn-clear" onclick="promptDisposition('${c.id}','Cleared')">✓ Clear</button>
+      <button class="btn-escalate" onclick="promptDisposition('${c.id}','Escalated')">↑ Escalate</button>
+      <button class="btn-sar" onclick="promptDisposition('${c.id}','SAR Filed')">📄 File SAR</button>
+    </div>
+    <div class="disposition-reason-box" id="reasonBox-${c.id}" style="display:none">
+      <textarea id="reasonInput-${c.id}" placeholder="Required: document why you're closing this case..."></textarea>
+      <div class="reason-buttons">
+        <button class="btn-clear" onclick="confirmDisposition('${c.id}')">Confirm</button>
+        <button onclick="cancelDisposition('${c.id}')">Cancel</button>
+      </div>
+    </div>` : '';
 
-  list.insertBefore(div,list.firstChild);
-  updateAlertCount();
+  return `
+    <div class="case-body">
+      <div class="case-top">
+        <div class="case-id">${c.id} <span style="color:var(--muted);font-weight:400">· ${c.customerName}</span></div>
+        <span class="case-status-badge cs-${c.status}">${STATUS_LABELS[c.status]}</span>
+      </div>
+      <div class="case-meta">${linkedTxns.length} linked alert${linkedTxns.length!==1?'s':''} · opened ${new Date(c.createdAt).toLocaleTimeString()}</div>
+      ${customerHTML}
+      <div class="case-rules">${uniqueRules.map(r=>`<span class="type-badge" style="background:${r.severity==='red'?'rgba(248,81,73,.15)':'rgba(210,153,34,.15)'};color:${r.severity==='red'?'var(--red)':'var(--yellow)'}">${r.name}</span>`).join('')}</div>
+      <div class="decision-guidance ${decision.cssClass}">
+        <div class="guidance-title">${decision.recommendation==='File SAR'?'📄 Recommended: File SAR':decision.recommendation==='Escalate'?'↑ Recommended: Escalate':'✓ Recommended: Clear'}</div>
+        <ul class="guidance-reasons">${decision.reasons.slice(0,4).map(r=>`<li>${r}</li>`).join('')}</ul>
+      </div>
+      <div class="case-alerts-list">${alertsListHTML}</div>
+      <div class="case-audit"><h5>Audit Trail</h5>${auditHTML}</div>
+      ${dispositionHTML}
+      ${actionsHTML}
+    </div>
+    ${dispositionButtonsHTML}`;
 }
 
-function resolveAlert(txnId, action, btn){
-  const card=document.querySelector(`.alert-card[data-id="${txnId}"]`); if(!card) return;
-  if(action==='clear') stats.cleared++;
-  if(action==='sar') stats.sarCount++;
-  card.style.opacity='0.4'; card.style.pointerEvents='none';
-  setTimeout(()=>{ card.remove(); if(!document.querySelector('.alert-card')){ document.getElementById('alertList').innerHTML=`<div class="empty-state"><div class="empty-icon">✅</div><div>All alerts resolved</div><div style="font-size:11px">Nice work, analyst!</div></div>`; } },400);
-  const msgs={clear:['Alert cleared — no further action required','success'],escalate:['Escalated to senior analyst for review','warning'],sar:['SAR filed with FinCEN','error']};
-  toast(...msgs[action]); updateAlertCount(); updateStats(); renderRules();
+function upsertCaseCard(c){
+  document.querySelector('.empty-state')?.remove();
+  const list = document.getElementById('alertList');
+  let el = list.querySelector(`[data-case-id="${c.id}"]`);
+  if(!el){
+    el = document.createElement('div');
+    el.setAttribute('data-case-id', c.id);
+  }
+  el.className = `case-card case-${c.status}`;
+  el.innerHTML = buildCaseCardHTML(c);
+  list.insertBefore(el, list.firstChild);
+  while(list.children.length>60) list.removeChild(list.lastChild);
+  updateCaseQueueCount();
 }
 
-function updateAlertCount(){
-  const n=document.querySelectorAll('.alert-card').length;
-  const el=document.getElementById('alertCount');
+function setCaseStatus(caseId, newStatus){
+  const c = cases.find(x=>x.id===caseId); if(!c || c.status===newStatus) return;
+  const old = c.status;
+  c.status = newStatus;
+  c.updatedAt = Date.now();
+  c.auditTrail.push({ ts:Date.now(), action:'Status changed', note:`${STATUS_LABELS[old]} → ${STATUS_LABELS[newStatus]}` });
+  upsertCaseCard(c);
+  toast(`${c.id} moved to ${STATUS_LABELS[newStatus]}`, 'info');
+}
+
+function promptDisposition(caseId, action){
+  pendingDisposition[caseId] = action;
+  const box = document.getElementById(`reasonBox-${caseId}`);
+  if(box){ box.style.display='flex'; document.getElementById(`reasonInput-${caseId}`).focus(); }
+}
+
+function cancelDisposition(caseId){
+  delete pendingDisposition[caseId];
+  const box = document.getElementById(`reasonBox-${caseId}`);
+  if(box) box.style.display='none';
+}
+
+function confirmDisposition(caseId){
+  const action = pendingDisposition[caseId]; if(!action) return;
+  const input = document.getElementById(`reasonInput-${caseId}`);
+  const reason = input ? input.value.trim() : '';
+  if(!reason){ toast('A disposition reason is required to close a case', 'warning'); return; }
+  const c = cases.find(x=>x.id===caseId); if(!c) return;
+  c.status = 'closed';
+  c.disposition = { action, reason, at: Date.now() };
+  c.updatedAt = Date.now();
+  c.auditTrail.push({ ts:Date.now(), action, note:reason });
+  delete pendingDisposition[caseId];
+  if(action==='Cleared') stats.cleared++;
+  if(action==='SAR Filed') stats.sarCount++;
+  const msgs={Cleared:['Case cleared — no further action required','success'],Escalated:['Case escalated to senior analyst','warning'],'SAR Filed':['SAR filed with FinCEN','error']};
+  toast(...msgs[action]);
+  upsertCaseCard(c);
+  updateStats(); renderRules();
+}
+
+function updateCaseQueueCount(){
+  const n = cases.filter(c=>c.status!=='closed').length;
+  const el = document.getElementById('alertCount');
   el.textContent=n; el.className=`alert-count ${n===0?'zero':''}`;
   document.getElementById('statReview').textContent=n;
 }
@@ -689,9 +819,13 @@ function updateStats(){
 // ─────────────────────────────────────────────
 
 function processTxn(txn){
-  transactions.push(txn); stats.total++; stats.totalVolume+=txn.amount; stats.totalRisk+=txn.riskScore;
+  transactions.push(txn); txnById.set(txn.id, txn);
+  stats.total++; stats.totalVolume+=txn.amount; stats.totalRisk+=txn.riskScore;
   addTxnToFeed(txn);
-  if(txn.status==='flagged'||txn.status==='review'){ stats.alertCount++; addAlert(txn); }
+  if(txn.status==='flagged'||txn.status==='review'){
+    stats.alertCount++;
+    upsertCaseCard(getOrCreateCase(txn));
+  }
   updateStats(); renderRules();
 }
 
@@ -735,8 +869,10 @@ function openModal(txn){
   const ruleNames=txn.triggeredRules.map(id=>RULES.find(r=>r.id===id)).filter(Boolean);
   const cp=txn.customerProfile;
   const decision=getDecision(txn);
+  const linkedCase=cases.find(c=>c.alertIds.includes(txn.id));
   document.getElementById('modalTitle').textContent=`${txn.id} — Detail`;
   document.getElementById('modalBody').innerHTML=`
+    ${linkedCase?`<button onclick="highlightCase('${linkedCase.id}')" style="width:100%;text-align:left;padding:8px 10px;margin-bottom:14px;background:rgba(88,166,255,.08);border:1px solid rgba(88,166,255,.3);border-radius:6px;color:var(--blue);font-size:11px;cursor:pointer">🗂 Part of ${linkedCase.id} (${STATUS_LABELS[linkedCase.status]}, ${linkedCase.alertIds.length} linked alert${linkedCase.alertIds.length!==1?'s':''}) — View Case →</button>`:''}
     <div class="modal-section">
       <h4>Transaction</h4>
       <div class="modal-grid">
@@ -773,6 +909,14 @@ function openModal(txn){
 }
 
 function closeModal(e){ if(e.target===document.getElementById('modalBackdrop')) document.getElementById('modalBackdrop').classList.remove('open'); }
+
+function highlightCase(caseId){
+  document.getElementById('modalBackdrop').classList.remove('open');
+  const el=document.querySelector(`[data-case-id="${caseId}"]`); if(!el) return;
+  el.scrollIntoView({behavior:'smooth', block:'center'});
+  el.style.outline='2px solid var(--blue)';
+  setTimeout(()=>{ el.style.outline=''; }, 1500);
+}
 
 // ─────────────────────────────────────────────
 //  CUSTOMER PROFILE MODAL
