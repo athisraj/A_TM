@@ -390,7 +390,9 @@ const RULES = [
   { id:'roundamt',  name:'Round Dollar Amount',       desc:'Wire or ACH ≥ $5,000 with round amount', check:(t)=>['WIRE','ACH'].includes(t.type)&&t.amount>=5000&&t.amount%1000===0, severity:'yellow', hits:0, active:true },
   { id:'largewire', name:'Large Wire Transfer',       desc:'Single wire transfer exceeding $50,000', check:(t)=>t.type==='WIRE'&&t.amount>=50000, severity:'yellow', hits:0, active:true },
   { id:'crypto',    name:'Crypto Conversion',         desc:'Any crypto transaction (elevated ML risk)', check:(t)=>t.type==='CRYPTO', severity:'yellow', hits:0, active:true },
-  { id:'dormant',   name:'Dormant Account Activity',  desc:'Large transaction from dormant account', check:(t)=>t.isDormant&&t.amount>=5000, severity:'red', hits:0, active:true }
+  { id:'dormant',   name:'Dormant Account Activity',  desc:'Large transaction from dormant account', check:(t)=>t.isDormant&&t.amount>=5000, severity:'red', hits:0, active:true },
+  { id:'behavioral',name:'Behavioral Deviation',      desc:"Amount is 3+ std. deviations from this customer's own history (needs 5+ prior txns)", check:(t)=>t.behavior&&t.behavior.count>=5&&t.behavior.stddev>0&&t.behavior.z>=3, severity:'yellow', hits:0, active:true },
+  { id:'newcountry',name:'New Counterparty Country',  desc:'Customer transacting with a country never seen in their own history (needs 5+ prior txns)', check:(t)=>t.behavior&&t.behavior.count>=5&&!t.behavior.countries.has(t.country), severity:'yellow', hits:0, active:true }
 ];
 
 const COUNTRIES = ['United States','United Kingdom','Canada','Germany','France','Singapore','Japan','Australia','Switzerland','Brazil','Iran','Russia','Venezuela','North Korea','Myanmar'];
@@ -455,9 +457,23 @@ const NAMES = ['Alice Chen','Bob Martinez','Carol Singh','David Kim','Elena Nova
 const COMPANIES = ['Nexus Trading LLC','Global Finance Corp','Apex Ventures','BlueSky Holdings','Meridian Partners','Summit Capital','Orion Investments'];
 function randomName() { return Math.random()<0.4 ? COMPANIES[Math.floor(Math.random()*COMPANIES.length)] : NAMES[Math.floor(Math.random()*NAMES.length)]; }
 
+// Builds a customer's own rolling behavioral baseline from transactions seen
+// so far this session, so anomalies are judged against *their* history rather
+// than a fixed range shared by everyone in the same risk tier.
+function getCustomerBehavior(name, history) {
+  const past = history.filter(t => t.sender === name);
+  if (past.length === 0) return null;
+  const amounts = past.map(t => t.amount);
+  const mean = amounts.reduce((a,b)=>a+b, 0) / amounts.length;
+  const variance = amounts.reduce((a,b)=>a+(b-mean)**2, 0) / amounts.length;
+  return { count: past.length, mean, stddev: Math.sqrt(variance), countries: new Set(past.map(t=>t.country)) };
+}
+
 function evaluateTxn(txn) {
   let risk = 0;
   txn.triggeredRules = [];
+  txn.behavior = getCustomerBehavior(txn.sender, transactions);
+  if (txn.behavior) txn.behavior.z = txn.behavior.stddev > 0 ? (txn.amount - txn.behavior.mean) / txn.behavior.stddev : 0;
   for(const rule of RULES){
     if(!rule.active) continue;
     if(rule.check(txn,transactions)){ txn.triggeredRules.push(rule.id); risk += rule.severity==='red'?40:20; rule.hits++; }
@@ -502,6 +518,10 @@ function getDecision(txn) {
   }
   if(HIGH_RISK_COUNTRIES.includes(txn.country)){ score+=3; reasons.push(`Transaction routed through sanctioned/high-risk country: ${txn.country}`); }
   if(txn.isDormant){ score+=2; reasons.push('Account was dormant before this transaction'); }
+  if(txn.behavior && txn.behavior.count>=5){
+    if(txn.behavior.stddev>0 && txn.behavior.z>=3){ score+=3; reasons.push(`Amount is ${txn.behavior.z.toFixed(1)}σ above this customer's own average of $${Math.round(txn.behavior.mean).toLocaleString()} (based on ${txn.behavior.count} prior txns)`); }
+    if(!txn.behavior.countries.has(txn.country)){ score+=2; reasons.push(`First-ever transaction to ${txn.country} for this customer in ${txn.behavior.count} observed txns`); }
+  }
 
   let recommendation, cssClass;
   if(score>=6){
@@ -604,6 +624,7 @@ function addAlert(txn){
         <div class="cstat"><div class="cv" style="color:${cp.pastAlerts>0?'var(--yellow)':'var(--green)'}">${cp.pastAlerts}</div><div class="cl">Past Alerts</div></div>
         <div class="cstat"><div class="cv" style="color:${cp.pastSARs>0?'var(--red)':'var(--green)'}">${cp.pastSARs}</div><div class="cl">Past SARs</div></div>
       </div>
+      ${txn.behavior ? `<div style="margin-top:6px;padding:6px 8px;background:var(--bg);border-radius:6px;font-size:10px;color:var(--muted)">Session baseline: ${txn.behavior.count} prior txn${txn.behavior.count!==1?'s':''}, avg $${Math.round(txn.behavior.mean).toLocaleString()}${txn.behavior.count>=5?` · this txn is <b style="color:${txn.behavior.z>=3?'var(--red)':txn.behavior.z>=2?'var(--yellow)':'var(--text)'}">${txn.behavior.z>=0?'+':''}${txn.behavior.z.toFixed(1)}σ</b>`:' · baseline still building (needs 5+)'}</div>` : ''}
       <button onclick="openProfileModal(${cp.id})" style="width:100%;padding:4px;font-size:10px;color:var(--blue);border-color:rgba(88,166,255,.3);background:rgba(88,166,255,.05);border-radius:5px;margin-top:4px">View Full Profile →</button>
     </div>` : `<div style="margin:4px 10px 8px;padding:8px 10px;background:var(--bg);border:1px solid var(--border);border-radius:8px;font-size:11px;color:var(--muted)">⚠ Unknown sender — not in customer database. KYC required.</div>`;
 
@@ -761,6 +782,7 @@ function openProfileModal(customerId){
   const cp=CUSTOMERS.find(c=>c.id===customerId); if(!cp) return;
   document.getElementById('profileModalTitle').textContent=`Customer Profile — ${cp.name}`;
   const recentTxns=transactions.filter(t=>t.sender===cp.name||t.receiver===cp.name).slice(-8).reverse();
+  const behavior=getCustomerBehavior(cp.name, transactions);
   document.getElementById('profileModalBody').innerHTML=`
     <div class="profile-card" style="margin-bottom:14px">
       <div class="profile-header">
@@ -788,6 +810,13 @@ function openProfileModal(customerId){
         <div class="pstat" style="background:var(--surface2);padding:10px;border-radius:6px;text-align:left"><div class="pl" style="margin-bottom:4px">Home Country</div><div style="font-size:14px;font-weight:700">${cp.country} ${HIGH_RISK_COUNTRIES.includes(cp.country)?'⚠️':''}</div></div>
       </div>
     </div>
+    ${behavior?`<div class="modal-section"><h4>Session Behavior Profile</h4>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        <div class="pstat" style="background:var(--surface2);padding:10px;border-radius:6px;text-align:left"><div class="pl" style="margin-bottom:4px">Observed Average</div><div style="font-size:14px;font-weight:700">$${Math.round(behavior.mean).toLocaleString()} <span style="font-size:10px;color:var(--muted);font-weight:400">(${behavior.count} txn${behavior.count!==1?'s':''})</span></div></div>
+        <div class="pstat" style="background:var(--surface2);padding:10px;border-radius:6px;text-align:left"><div class="pl" style="margin-bottom:4px">Countries Seen</div><div style="font-size:14px;font-weight:700">${[...behavior.countries].join(', ')}</div></div>
+      </div>
+      <div style="font-size:11px;color:var(--muted);margin-top:6px">${behavior.count>=5?'Baseline established — new transactions are scored against this history for anomaly detection.':`Baseline still building — needs ${5-behavior.count} more transaction${5-behavior.count!==1?'s':''} before anomaly detection activates.`}</div>
+    </div>`:''}
     ${recentTxns.length>0?`<div class="modal-section"><h4>Recent Transactions (this session)</h4>${recentTxns.map(t=>`<div class="txn-history-row"><span>${t.id}</span><span class="type-badge ${TYPE_CLASSES[t.type]}">${t.type}</span><span>$${t.amount.toLocaleString()}</span><span class="${t.status==='flagged'?'s-alert':t.status==='review'?'s-review':'s-clear'} status-badge">${t.status.toUpperCase()}</span></div>`).join('')}</div>`:''}
     <div class="modal-section"><h4>Decision Guide for this Customer</h4>
       <div style="display:flex;flex-direction:column;gap:8px;font-size:11px">
